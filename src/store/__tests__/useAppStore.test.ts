@@ -271,7 +271,17 @@ describe('useAppStore Zustand Store Unit Tests', () => {
       expect(order).not.toBeNull();
       expect(order?.id).toBe('GS-123456');
       expect(order?.total_amount).toBe(64.20);
-      expect(mockRpc).toHaveBeenCalledWith('create_order_transaction', expect.any(Object));
+      expect(mockRpc).toHaveBeenCalledWith('create_order_transaction', expect.objectContaining({
+        p_user_id: 'user-123',
+        p_shipping_address: expect.objectContaining({ state: 'CA' }),
+        p_payment_method: 'card',
+        p_promo_code: null,
+      }));
+      const [, rpcArgs] = mockRpc.mock.calls[0];
+      expect(rpcArgs).not.toHaveProperty('p_total_amount');
+      expect(rpcArgs).not.toHaveProperty('p_tax_amount');
+      expect(rpcArgs).not.toHaveProperty('p_shipping_amount');
+      expect(rpcArgs).not.toHaveProperty('p_discount_amount');
     });
 
     it('should handle order creation failures gracefully', async () => {

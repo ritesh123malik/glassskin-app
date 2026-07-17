@@ -72,3 +72,72 @@ jobs:
           name: coverage-report
           path: coverage/
           retention-days: 14
+
+  # -------------------------------------------------------------------
+  # Job: Supabase Migration Lint
+  # Validates SQL migrations for syntax errors and drift
+  # -------------------------------------------------------------------
+  migration-lint:
+    name: Supabase Migration Lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    services:
+      supabase:
+        image: supabase/postgres:15.3.0.071
+        ports:
+          - 5432:5432
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_USER: postgres
+          POSTGRES_DB: postgres
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20.x'
+          cache: 'npm'
+
+      - name: Install Supabase CLI
+        run: npm install -g supabase@latest
+
+      - name: Start local Supabase
+        run: |
+          supabase init --db-url postgres://postgres:postgres@localhost:5432/postgres
+          supabase start -d &
+          sleep 10
+          supabase db push --db-url postgres://postgres:postgres@localhost:5432/postgres
+
+      - name: Lint migrations
+        run: |
+          for file in supabase/migrations/*.sql; do
+            echo "Linting $file..."
+            psql postgres://postgres:postgres@localhost:5432/postgres -v ON_ERROR_STOP=1 -f "$file" > /dev/null 2>&1
+            if [ $? -ne 0 ]; then
+              echo "::error::Migration syntax error in $file"
+              psql postgres://postgres:postgres@localhost:5432/postgres -f "$file" 2>&1
+              exit 1
+            fi
+          done
+          echo "All migrations passed syntax validation"
+
+      - name: Verify migration order
+        run: |
+          ls -1 supabase/migrations/*.sql | sort -t_ -k4 -n | diff - <(ls -1 supabase/migrations/*.sql) || {
+            echo "::error::Migrations are not in chronological order"
+            exit 1
+          }
+          echo "Migration order is correct"
+
+      - name: Stop Supabase
+        if: always()
+        run: supabase stop -d || true

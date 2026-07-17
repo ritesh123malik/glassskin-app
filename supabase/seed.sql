@@ -81,8 +81,15 @@ SELECT public.seed_user('00000000-0000-0000-0000-00000000000a', 'jane.doe@exampl
 SELECT public.seed_user('00000000-0000-0000-0000-00000000000b', 'emily.smith@example.com', 'Emily Smith');
 SELECT public.seed_user('00000000-0000-0000-0000-00000000000c', 'sophia.loren@example.com', 'Sophia Loren');
 SELECT public.seed_user('00000000-0000-0000-0000-00000000000d', 'olivia.martinez@example.com', 'Olivia Martinez');
+SELECT public.seed_user('00000000-0000-0000-0000-000000000099', 'admin@glassskin.com', 'GLASSSKIN Admin');
 
 DROP FUNCTION public.seed_user(UUID, TEXT, TEXT);
+
+UPDATE public.users
+SET role = 'admin',
+    full_name = 'GLASSSKIN Admin',
+    updated_at = NOW()
+WHERE id = '00000000-0000-0000-0000-000000000099';
 
 
 -- ==========================================================

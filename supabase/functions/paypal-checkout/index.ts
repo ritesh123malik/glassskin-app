@@ -35,6 +35,27 @@ async function getPayPalAccessToken() {
   return { accessToken: data.access_token, baseUrl }
 }
 
+async function getAuthenticatedUser(req: Request, supabase: any) {
+  const authHeader = req.headers.get('Authorization')
+  if (!authHeader?.startsWith('Bearer ')) {
+    throw new Error('Unauthorized: missing bearer token')
+  }
+
+  const token = authHeader.replace('Bearer ', '')
+  const { data, error } = await supabase.auth.getUser(token)
+  if (error || !data.user) {
+    throw new Error('Unauthorized: invalid bearer token')
+  }
+
+  return data.user
+}
+
+function assertOrderOwner(order: any, user: any) {
+  if (!order.user_id || order.user_id !== user.id) {
+    throw new Error('Forbidden: order does not belong to the authenticated user')
+  }
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders })
@@ -48,6 +69,7 @@ serve(async (req) => {
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     )
+    const authUser = await getAuthenticatedUser(req, supabase)
 
     if (action === 'create') {
       const { orderId } = await req.json()
@@ -78,6 +100,7 @@ serve(async (req) => {
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         })
       }
+      assertOrderOwner(order, authUser)
 
       // 2. Recalculate totals and check stock availability
       const productIds = order.items.map((item: any) => item.product_id)
@@ -194,6 +217,20 @@ serve(async (req) => {
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         })
       }
+
+      const { data: order, error: orderError } = await supabase
+        .from('orders')
+        .select('id, user_id, status')
+        .eq('id', orderId)
+        .single()
+
+      if (orderError || !order) {
+        return new Response(JSON.stringify({ error: `Order not found: ${orderError?.message}` }), {
+          status: 404,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        })
+      }
+      assertOrderOwner(order, authUser)
 
       const { accessToken, baseUrl } = await getPayPalAccessToken()
       const paypalRes = await fetch(`${baseUrl}/v2/checkout/orders/${paypalOrderId}/capture`, {

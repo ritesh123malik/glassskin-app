@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, FlatList, TouchableOpacity, SafeAreaView, TextI
 import { ShoppingCart, Plus, Minus, Trash2, Ticket, X } from 'lucide-react-native';
 import Swipeable from 'react-native-gesture-handler/Swipeable';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAppStore } from '../../store/useAppStore';
 import { GlassCard } from '../../components/common/GlassCard';
 import { GlassButton } from '../../components/common/GlassButton';
@@ -11,7 +12,10 @@ import { analytics } from '../../services/analytics';
 import { tokens } from '../../theme/tokens';
 import { typography } from '../../theme/typography';
 
+const FLOATING_TAB_BAR_CLEARANCE = 96;
+
 export const CartScreen = ({ navigation }: any) => {
+  const insets = useSafeAreaInsets();
   const cartItems = useAppStore(state => state.cartItems);
   const fetchCart = useAppStore(state => state.fetchCart);
   const updateCartQuantity = useAppStore(state => state.updateCartQuantity);
@@ -271,8 +275,12 @@ export const CartScreen = ({ navigation }: any) => {
                         onChangeText={setPromoInput}
                         autoCapitalize="characters"
                       />
-                      <TouchableOpacity style={styles.promoApplyBtn} onPress={handleApplyPromo}>
-                        <Text style={styles.promoApplyBtnText}>Apply</Text>
+                      <TouchableOpacity
+                        style={[styles.promoApplyBtn, promoLoading && styles.promoApplyBtnDisabled]}
+                        onPress={handleApplyPromo}
+                        disabled={promoLoading}
+                      >
+                        <Text style={styles.promoApplyBtnText}>{promoLoading ? 'Applying' : 'Apply'}</Text>
                       </TouchableOpacity>
                     </View>
 
@@ -330,7 +338,12 @@ export const CartScreen = ({ navigation }: any) => {
             />
 
             {/* Checkout Button */}
-            <View style={styles.footer}>
+            <View
+              style={[
+                styles.footer,
+                { marginBottom: insets.bottom + FLOATING_TAB_BAR_CLEARANCE },
+              ]}
+            >
               <GlassButton
                 title="Proceed to Checkout"
                 onPress={() => navigation.navigate('Checkout')}
@@ -380,7 +393,7 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     padding: 20,
-    paddingBottom: 100,
+    paddingBottom: 160,
   },
   itemCard: {
     padding: 12,
@@ -505,6 +518,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     backgroundColor: tokens.colors.accent,
     borderRadius: 6,
+  },
+  promoApplyBtnDisabled: {
+    opacity: 0.6,
   },
   promoApplyBtnText: {
     color: tokens.colors.background,

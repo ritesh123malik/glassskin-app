@@ -1,0 +1,13 @@
+{
+  "/_not-found": "app/_not-found.js",
+  "/login/page": "app/login/page.js",
+  "/page": "app/page.js",
+  "/dashboard/products/[id]/edit/page": "app/dashboard/products/[id]/edit/page.js",
+  "/dashboard/products/page": "app/dashboard/products/page.js",
+  "/dashboard/orders/page": "app/dashboard/orders/page.js",
+  "/dashboard/orders/[id]/page": "app/dashboard/orders/[id]/page.js",
+  "/dashboard/page": "app/dashboard/page.js",
+  "/dashboard/settings/page": "app/dashboard/settings/page.js",
+  "/dashboard/analytics/page": "app/dashboard/analytics/page.js",
+  "/dashboard/products/new/page": "app/dashboard/products/new/page.js"
+}

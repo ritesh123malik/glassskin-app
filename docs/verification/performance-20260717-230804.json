@@ -1,0 +1,11 @@
+{
+  "measuredAt": "2026-07-17T17:38:04.883Z",
+  "dependencies": 43,
+  "devDependencies": 18,
+  "lockfilePackages": 1320,
+  "checks": {
+    "typecheck": "npm run typecheck",
+    "tests": "npm test -- --runInBand",
+    "expoDoctor": "npx expo-doctor"
+  }
+}

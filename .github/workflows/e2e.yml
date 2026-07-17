@@ -1,0 +1,127 @@
+name: E2E Tests - Detox
+
+on:
+  pull_request:
+    branches:
+      - main
+      - 'release/**'
+    paths:
+      - 'src/screens/cart/**'
+      - 'src/store/**'
+      - 'e2e/**'
+      - '.detoxrc.js'
+  push:
+    branches:
+      - main
+    paths:
+      - 'src/screens/cart/**'
+      - 'src/store/**'
+      - 'e2e/**'
+      - '.detoxrc.js'
+
+concurrency:
+  group: e2e-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  e2e-ios:
+    name: Detox iOS E2E Tests
+    runs-on: macos-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20.x'
+          cache: 'npm'
+
+      - name: Install deps
+        run: npm install --legacy-peer-deps
+
+      - name: Install Detox CLI
+        run: npm install -g detox-cli
+
+      - name: Cache Pods
+        uses: actions/cache@v3
+        with:
+          path: ios/Pods
+          key: ${{ runner.os }}-pods-${{ hashFiles('ios/Podfile.lock') }}
+
+      - name: Install iOS deps
+        run: |
+          cd ios
+          pod install --repo-update
+          cd ..
+
+      - name: Build for testing
+        run: npx detox build --configuration ios.simulator
+        env:
+          EXPO_PUBLIC_SUPABASE_URL: https://placeholder.supabase.co
+          EXPO_PUBLIC_SUPABASE_ANON_KEY: placeholder
+          EXPO_PUBLIC_USE_MOCKS: "true"
+
+      - name: Run iOS tests
+        run: npx detox test --configuration ios.simulator --cleanup
+        env:
+          EXPO_PUBLIC_SUPABASE_URL: https://placeholder.supabase.co
+          EXPO_PUBLIC_SUPABASE_ANON_KEY: placeholder
+          EXPO_PUBLIC_USE_MOCKS: "true"
+
+      - name: Upload artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: detox-ios-artifacts
+          path: |
+            artifacts/
+            logs/
+          retention-days: 14
+
+  e2e-android:
+    name: Detox Android E2E Tests
+    runs-on: macos-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20.x'
+          cache: 'npm'
+
+      - name: Install deps
+        run: npm install --legacy-peer-deps
+
+      - name: Install Detox CLI
+        run: npm install -g detox-cli
+
+      - name: Build for testing
+        run: npx detox build --configuration android.emu
+        env:
+          EXPO_PUBLIC_SUPABASE_URL: https://placeholder.supabase.co
+          EXPO_PUBLIC_SUPABASE_ANON_KEY: placeholder
+          EXPO_PUBLIC_USE_MOCKS: "true"
+
+      - name: Run Android tests
+        run: npx detox test --configuration android.emu --cleanup
+        env:
+          EXPO_PUBLIC_SUPABASE_URL: https://placeholder.supabase.co
+          EXPO_PUBLIC_SUPABASE_ANON_KEY: placeholder
+          EXPO_PUBLIC_USE_MOCKS: "true"
+
+      - name: Upload artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: detox-android-artifacts
+          path: |
+            artifacts/
+            logs/
+          retention-days: 14

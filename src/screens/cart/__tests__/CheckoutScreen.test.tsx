@@ -1,5 +1,5 @@
 import React from 'react';
-import { render, fireEvent, waitFor } from '@testing-library/react-native';
+import { render, fireEvent } from '@testing-library/react-native';
 import { CheckoutScreen } from '../CheckoutScreen';
 import { useAppStore } from '../../../store/useAppStore';
 import { Alert } from 'react-native';

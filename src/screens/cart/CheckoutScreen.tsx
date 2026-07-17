@@ -279,7 +279,10 @@ export const CheckoutScreen = ({ navigation }: any) => {
       analytics.trackPaymentAttempt('PayPal', calculatedTotals.total);
       const params = await createPayPalCheckoutOrder(order.id);
       if (!params) {
-        Alert.alert('Payment Error', 'Failed to initialize PayPal Payment. Please try again.');
+        Alert.alert(
+          'Payment Error',
+          'Failed to initialize PayPal. Make sure the paypal-checkout Edge Function is deployed or running locally, and that PayPal secrets are configured.'
+        );
         return;
       }
 

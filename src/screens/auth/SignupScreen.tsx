@@ -18,7 +18,7 @@ export const SignupScreen = ({ route, navigation }: any) => {
   const [agreedToTerms, setAgreedToTerms] = useState(false);
   const [errors, setErrors] = useState<{ fullName?: string; email?: string; password?: string; confirmPassword?: string; agreedToTerms?: string }>({});
 
-  const { signUp, authLoading, authError } = useAppStore();
+  const { signUp, signInWithSocial, authLoading, authError } = useAppStore();
 
   useEffect(() => {
     if (initialEmail) setEmail(initialEmail);
@@ -58,6 +58,13 @@ export const SignupScreen = ({ route, navigation }: any) => {
       if (success) {
         navigation.navigate('MainTabs');
       }
+    }
+  };
+
+  const handleSocialSignup = async (provider: 'google' | 'apple') => {
+    const success = await signInWithSocial(provider);
+    if (success) {
+      navigation.navigate('MainTabs');
     }
   };
 
@@ -158,6 +165,31 @@ export const SignupScreen = ({ route, navigation }: any) => {
             style={styles.signupBtn}
           />
 
+          <View style={styles.dividerContainer}>
+            <View style={styles.dividerLine} />
+            <Text style={styles.dividerText}>or</Text>
+            <View style={styles.dividerLine} />
+          </View>
+
+          <View style={styles.socialContainer}>
+            <TouchableOpacity
+              style={styles.socialButton}
+              activeOpacity={0.7}
+              disabled={authLoading}
+              onPress={() => handleSocialSignup('google')}
+            >
+              <Text style={styles.socialButtonText}>Google</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.socialButton}
+              activeOpacity={0.7}
+              disabled={authLoading}
+              onPress={() => handleSocialSignup('apple')}
+            >
+              <Text style={styles.socialButtonText}>Apple</Text>
+            </TouchableOpacity>
+          </View>
+
           <View style={styles.loginContainer}>
             <Text style={styles.loginText}>Already have an account? </Text>
             <TouchableOpacity onPress={() => navigation.navigate('Login')}>
@@ -248,6 +280,42 @@ const styles = StyleSheet.create({
     fontFamily: 'Inter_400Regular',
     textAlign: 'center',
     marginBottom: 16,
+  },
+  dividerContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  dividerLine: {
+    flex: 1,
+    height: 1,
+    backgroundColor: tokens.colors.line,
+  },
+  dividerText: {
+    color: tokens.colors.muted,
+    paddingHorizontal: 12,
+    fontSize: 14,
+    fontFamily: 'Inter_400Regular',
+  },
+  socialContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 16,
+  },
+  socialButton: {
+    flex: 0.48,
+    height: 44,
+    borderRadius: 10,
+    backgroundColor: tokens.colors.glass,
+    borderWidth: 1,
+    borderColor: tokens.colors.line,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  socialButtonText: {
+    color: tokens.colors.ink,
+    fontSize: 14,
+    fontFamily: 'Inter_600SemiBold',
   },
   loginContainer: {
     flexDirection: 'row',

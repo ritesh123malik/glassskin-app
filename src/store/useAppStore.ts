@@ -3,9 +3,9 @@ import { User, Product, CartItem, WishlistItem, Order, ShippingAddress } from '.
 import { supabaseClient, SecureStoreAdapter } from '../services/supabaseClient';
 import { User as AuthUser } from '@supabase/supabase-js';
 import * as WebBrowser from 'expo-web-browser';
-import * as Linking from 'expo-linking';
 import { Alert } from 'react-native';
 import { productCacheService } from '../services/productCacheService';
+import { getOAuthRedirectUrl, parseOAuthTokensFromUrl } from '../utils/auth';
 
 // WebBrowser setup for OAuth
 WebBrowser.maybeCompleteAuthSession();
@@ -215,7 +215,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   signInWithSocial: async (provider) => {
     set({ authLoading: true, authError: null });
     try {
-      const redirectUrl = Linking.createURL('auth-callback');
+      const redirectUrl = getOAuthRedirectUrl();
       const res = await supabaseClient.auth.signInWithOAuth({
         provider,
         options: {
@@ -228,31 +228,19 @@ export const useAppStore = create<AppState>((set, get) => ({
       if (res.data?.url) {
         const browserResult = await WebBrowser.openAuthSessionAsync(res.data.url, redirectUrl);
         if (browserResult.type === 'success') {
-          const { url } = browserResult;
-          const hashIndex = url.indexOf('#');
-          if (hashIndex !== -1) {
-            const hash = url.substring(hashIndex + 1);
-            const params: Record<string, string> = {};
-            hash.split('&').forEach(pair => {
-              const [k, v] = pair.split('=');
-              if (k && v) params[decodeURIComponent(k)] = decodeURIComponent(v);
-            });
+          const tokens = parseOAuthTokensFromUrl(browserResult.url);
 
-            if (params.access_token && params.refresh_token) {
-              const sessionRes = await supabaseClient.auth.setSession({
-                access_token: params.access_token,
-                refresh_token: params.refresh_token
-              });
-              if (sessionRes.error) throw sessionRes.error;
-              const mappedUser = mapAuthUser(sessionRes.data.user);
-              set({ user: mappedUser, authLoading: false });
-              
-              if (mappedUser) {
-                await get().mergeGuestCartIntoUserCart(mappedUser.id);
-                await get().fetchUserPreferences();
-              }
-              return true;
+          if (tokens) {
+            const sessionRes = await supabaseClient.auth.setSession(tokens);
+            if (sessionRes.error) throw sessionRes.error;
+            const mappedUser = mapAuthUser(sessionRes.data.user);
+            set({ user: mappedUser, authLoading: false });
+
+            if (mappedUser) {
+              await get().mergeGuestCartIntoUserCart(mappedUser.id);
+              await get().fetchUserPreferences();
             }
+            return true;
           }
         }
       }
@@ -1076,7 +1064,6 @@ export const useAppStore = create<AppState>((set, get) => ({
     const user = get().user;
     set({ ordersLoading: true });
     try {
-      const totals = get().getCartTotals();
       const trackingId = 'GS-' + Math.floor(100000 + Math.random() * 900000).toString();
       const items = get().cartItems.map(item => ({
         product_id: item.product_id,
@@ -1095,10 +1082,6 @@ export const useAppStore = create<AppState>((set, get) => ({
         // p_user_id is never null here — the checkout screen ensures signInAsGuest()
         // has been called before createOrder is invoked.
         p_user_id: user ? user.id : null,
-        p_total_amount: totals.total,
-        p_tax_amount: totals.tax,
-        p_shipping_amount: totals.shipping,
-        p_discount_amount: totals.discount,
         p_shipping_address: shippingAddress as any,
         p_payment_method: paymentMethod,
         p_items: items as any,

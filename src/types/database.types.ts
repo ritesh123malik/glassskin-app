@@ -526,14 +526,14 @@ export type Database = {
         Args: {
           p_order_id: string;
           p_user_id: string | null;
-          p_total_amount: number;
-          p_tax_amount: number;
-          p_shipping_amount: number;
-          p_discount_amount: number;
           p_shipping_address: Json;
           p_payment_method: string;
           p_items: Json;
           p_promo_code?: string | null;
+          p_total_amount?: number | null;
+          p_tax_amount?: number | null;
+          p_shipping_amount?: number | null;
+          p_discount_amount?: number | null;
         }
         Returns: Json;
       }
