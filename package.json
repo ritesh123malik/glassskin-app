@@ -61,7 +61,7 @@
     "postcss": "^8.5.19",
     "react-native-worklets": "~0.10.2",
     "react-refresh": "^0.18.0",
-    "react-test-renderer": "19.2.3",
+    "react-test-renderer": "19.2.7",
     "tailwindcss": "^3.4.17",
     "test-renderer": "^1.2.0",
     "ts-jest": "^29.4.11",
