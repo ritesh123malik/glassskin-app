@@ -1,0 +1,100 @@
+version: 2
+updates:
+  # -----------------------------------------------------------------------
+  # npm dependency updates
+  # Expo and React Native move fast; weekly checks catch CVEs and
+  # SDK releases early. PRs are automatically opened for review.
+  # -----------------------------------------------------------------------
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "UTC"
+
+    # Group patch/minor updates to reduce noise. Major updates get
+    # separate PRs so breaking changes are reviewed individually.
+    groups:
+      expo-ecosystem:
+        patterns:
+          - "expo"
+          - "expo-*"
+          - "@expo/*"
+          - "jest-expo"
+          - "babel-preset-expo"
+        update-types:
+          - "minor"
+          - "patch"
+      react-native-ecosystem:
+        patterns:
+          - "react-native"
+          - "react-native-*"
+          - "@react-native/*"
+          - "@react-navigation/*"
+          - "react"
+          - "react-dom"
+        update-types:
+          - "minor"
+          - "patch"
+      testing-tools:
+        patterns:
+          - "@testing-library/*"
+          - "jest"
+          - "ts-jest"
+          - "detox"
+          - "@types/*"
+          - "typescript"
+          - "typescript-eslint"
+          - "@typescript-eslint/*"
+          - "eslint"
+          - "eslint-*"
+        update-types:
+          - "minor"
+          - "patch"
+      third-party-services:
+        patterns:
+          - "@sentry/*"
+          - "@supabase/*"
+          - "@stripe/*"
+        update-types:
+          - "minor"
+          - "patch"
+
+    # Security updates always get their own PR immediately
+    open-pull-requests-limit: 10
+
+    # Label all Dependabot PRs for easy filtering
+    labels:
+      - "dependencies"
+      - "automated"
+
+    # Target the main branch for all dependency PRs
+    target-branch: "main"
+
+    # Add reviewers who should sign off on dependency upgrades
+    # reviewers:
+    #   - your-github-username
+
+    # Prefix commit messages for readability
+    commit-message:
+      prefix: "chore(deps)"
+      prefix-development: "chore(deps-dev)"
+      include: "scope"
+
+  # -----------------------------------------------------------------------
+  # GitHub Actions workflow updates
+  # -----------------------------------------------------------------------
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "UTC"
+    labels:
+      - "dependencies"
+      - "github-actions"
+      - "automated"
+    commit-message:
+      prefix: "chore(actions)"

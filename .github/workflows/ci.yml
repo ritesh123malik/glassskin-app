@@ -1,0 +1,74 @@
+name: CI — Typecheck, Lint & Test
+
+on:
+  pull_request:
+    branches:
+      - main
+      - 'release/**'
+  push:
+    branches:
+      - main
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ci:
+    name: Typecheck · Lint · Test
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Needed for accurate changelogs / affected checks
+
+      - name: Setup Node.js 20.x
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20.x'
+          cache: 'npm'
+
+      - name: Install dependencies
+        # --legacy-peer-deps required because react@19.2 has peer conflicts
+        # with some Expo/RN testing libraries (documented in jest.setup.js)
+        run: npm install --legacy-peer-deps
+
+      # -------------------------------------------------------------------
+      # Step 1: TypeScript — fails the PR on any type error
+      # -------------------------------------------------------------------
+      - name: TypeScript typecheck
+        run: npm run typecheck
+
+      # -------------------------------------------------------------------
+      # Step 2: ESLint — fails on errors (not warnings)
+      # ESLint is configured to error on unused vars, no-debugger, etc.
+      # -------------------------------------------------------------------
+      - name: ESLint lint
+        run: npm run lint
+
+      # -------------------------------------------------------------------
+      # Step 3: Unit + Integration tests with coverage
+      # Fails if any test fails OR if coverage thresholds are not met.
+      # Coverage thresholds: 70% for src/utils/, minimums for src/store/
+      # -------------------------------------------------------------------
+      - name: Run tests
+        run: npm test -- --ci --reporters=default --reporters=github-actions
+        env:
+          # Provide dummy env vars so supabaseClient.ts validation doesn't crash
+          # at module load time. Real secrets are never needed for unit tests.
+          EXPO_PUBLIC_SUPABASE_URL: https://placeholder.supabase.co
+          EXPO_PUBLIC_SUPABASE_ANON_KEY: placeholder-anon-key
+
+      # -------------------------------------------------------------------
+      # Upload coverage report as a job artifact for inspection
+      # -------------------------------------------------------------------
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: coverage/
+          retention-days: 14

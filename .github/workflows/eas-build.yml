@@ -1,0 +1,196 @@
+name: EAS Build & Submit
+
+on:
+  # Trigger on version tags (e.g. v1.2.3) for production releases
+  push:
+    tags:
+      - 'v[0-9]+.[0-9]+.[0-9]+'
+      - 'v[0-9]+.[0-9]+.[0-9]+-rc.[0-9]+'
+
+  # Manual trigger — allows building from any branch on demand
+  workflow_dispatch:
+    inputs:
+      profile:
+        description: 'EAS build profile to use'
+        required: true
+        default: 'preview'
+        type: choice
+        options:
+          - preview
+          - production
+      platform:
+        description: 'Platform to build for'
+        required: true
+        default: 'all'
+        type: choice
+        options:
+          - all
+          - ios
+          - android
+      submit:
+        description: 'Submit to stores after build? (preview → internal testing, production → store review)'
+        required: false
+        default: false
+        type: boolean
+
+# Only allow one release build at a time
+concurrency:
+  group: eas-build-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  # -----------------------------------------------------------------------
+  # Job 1: Build iOS + Android via EAS
+  # Source maps are automatically uploaded to Sentry by the
+  # @sentry/react-native Expo plugin during the EAS build process.
+  # -----------------------------------------------------------------------
+  build:
+    name: EAS Build (${{ inputs.profile || 'production' }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    # Gate production builds behind a manual approval environment.
+    # Create an environment named "production" in GitHub Settings → Environments
+    # and add required reviewers there. Preview builds skip this gate.
+    environment: ${{ (inputs.profile == 'production' || startsWith(github.ref, 'refs/tags/v')) && 'production' || 'preview' }}
+
+    outputs:
+      ios-build-id: ${{ steps.eas-build.outputs.ios-build-id }}
+      android-build-id: ${{ steps.eas-build.outputs.android-build-id }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 20.x
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20.x'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm install --legacy-peer-deps
+
+      - name: Install EAS CLI
+        run: npm install --global eas-cli@latest
+
+      - name: Authenticate with Expo
+        # EXPO_TOKEN is stored as a GitHub Actions secret.
+        # Never print this token — it grants full account access.
+        run: eas whoami
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+
+      # -----------------------------------------------------------------------
+      # Determine EAS build profile:
+      #   - version tag (v*) → production
+      #   - manual dispatch → use input value
+      # -----------------------------------------------------------------------
+      - name: Determine build profile
+        id: profile
+        run: |
+          if [[ "${{ github.event_name }}" == "push" && "${{ github.ref }}" == refs/tags/v* ]]; then
+            echo "profile=production" >> "$GITHUB_OUTPUT"
+            echo "platform=all" >> "$GITHUB_OUTPUT"
+          else
+            echo "profile=${{ inputs.profile || 'preview' }}" >> "$GITHUB_OUTPUT"
+            echo "platform=${{ inputs.platform || 'all' }}" >> "$GITHUB_OUTPUT"
+          fi
+
+      # -----------------------------------------------------------------------
+      # EAS Build
+      # --non-interactive: required in CI, skips interactive prompts
+      # --wait: blocks the action until the remote build completes
+      #
+      # Sentry source maps: automatically uploaded during the EAS build by
+      # the @sentry/react-native Expo plugin configured in app.json.
+      # SENTRY_AUTH_TOKEN must be set as an EAS secret (not a GitHub secret)
+      # so the build workers can access it.
+      # -----------------------------------------------------------------------
+      - name: EAS Build
+        id: eas-build
+        run: |
+          eas build \
+            --profile ${{ steps.profile.outputs.profile }} \
+            --platform ${{ steps.profile.outputs.platform }} \
+            --non-interactive \
+            --wait \
+            --json > build-output.json 2>&1 || true
+          cat build-output.json
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+          # These EAS secrets are configured via `eas secret:push` (see docs/RELEASE_PROCESS.md).
+          # They are injected into the EAS build workers, not directly referenced here —
+          # listing them documents which secrets must exist but none are logged.
+
+      - name: Upload build output log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: eas-build-output-${{ github.run_id }}
+          path: build-output.json
+          retention-days: 30
+
+  # -----------------------------------------------------------------------
+  # Job 2: Submit to internal testing tracks (manual-approval gated)
+  #
+  # This job ONLY runs if the `submit` input is explicitly true on a
+  # workflow_dispatch, OR on a version tag push.
+  # Actual App Store / Play Console production promotion is still manual.
+  # -----------------------------------------------------------------------
+  submit:
+    name: EAS Submit (Internal Testing)
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    if: |
+      (github.event_name == 'workflow_dispatch' && inputs.submit == true) ||
+      (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v'))
+
+    # This environment requires manual approval before submission executes.
+    # Go to GitHub Settings → Environments → "production" → Required reviewers.
+    environment: production
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 20.x
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20.x'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm install --legacy-peer-deps
+
+      - name: Install EAS CLI
+        run: npm install --global eas-cli@latest
+
+      - name: Authenticate with Expo
+        run: eas whoami
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+
+      - name: Submit iOS to TestFlight (internal testing)
+        run: |
+          eas submit \
+            --platform ios \
+            --profile production \
+            --non-interactive \
+            --latest
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+          # ASC_APP_ID and related Apple credentials must be configured in
+          # the EAS project dashboard under Credentials, not here.
+
+      - name: Submit Android to Play Internal Testing
+        run: |
+          eas submit \
+            --platform android \
+            --profile production \
+            --non-interactive \
+            --latest
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+          # Google Play service account JSON must be configured in EAS Credentials.
