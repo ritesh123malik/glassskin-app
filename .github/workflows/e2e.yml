@@ -46,7 +46,7 @@ jobs:
         run: npm install -g detox-cli
 
       - name: Cache Pods
-        uses: actions/cache@v3
+        uses: actions/cache@v6
         with:
           path: ios/Pods
           key: ${{ runner.os }}-pods-${{ hashFiles('ios/Podfile.lock') }}
