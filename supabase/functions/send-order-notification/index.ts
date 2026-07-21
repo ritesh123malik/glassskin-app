@@ -7,11 +7,7 @@
  */
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.38.4"
-
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-}
+import { getCorsHeaders } from "../_shared/cors.ts"
 
 const EXPO_PUSH_API = 'https://exp.host/--/api/v2/push/send'
 
@@ -28,29 +24,22 @@ interface PushMessage {
 async function sendExpoPushNotifications(messages: PushMessage[]) {
   if (messages.length === 0) return
 
-  const chunks: PushMessage[][] = []
-  for (let i = 0; i < messages.length; i += 100) {
-    chunks.push(messages.slice(i, i + 100))
-  }
+  const res = await fetch(EXPO_PUSH_API, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Accept': 'application/json',
+      'Accept-Encoding': 'gzip, deflate',
+    },
+    body: JSON.stringify(chunk),
+  })
 
-  for (const chunk of chunks) {
-    const res = await fetch(EXPO_PUSH_API, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Accept': 'application/json',
-        'Accept-Encoding': 'gzip, deflate',
-      },
-      body: JSON.stringify(chunk),
-    })
-
-    if (!res.ok) {
-      const errText = await res.text()
-      console.error(`Expo Push API error: ${errText}`)
-    } else {
-      const result = await res.json()
-      console.log('Expo Push API result:', JSON.stringify(result))
-    }
+  if (!res.ok) {
+    const errText = await res.text()
+    console.error(`Expo Push API error: ${errText}`)
+  } else {
+    const result = await res.json()
+    console.log('Expo Push API result:', JSON.stringify(result))
   }
 }
 
@@ -83,52 +72,48 @@ function getNotificationContent(
 }
 
 serve(async (req) => {
+  const requestOrigin = req.headers.get('origin')
+  const corsHeaders = getCorsHeaders(requestOrigin)
+
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders })
   }
 
+  if (!corsHeaders['Access-Control-Allow-Origin']) {
+    return new Response(JSON.stringify({ error: 'Origin not allowed' }), {
+      status: 403,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    })
+  }
+
   try {
-    // Webhook payload from Supabase Database Webhooks (HTTP POST)
-    const payload = await req.json()
-    console.log('Received webhook payload:', JSON.stringify(payload))
-
-    // Support both direct calls and Supabase webhook format
-    const record = payload.record || payload
-    const oldRecord = payload.old_record || {}
-
-    const { id: orderId, user_id: userId, status: newStatus } = record
-    const oldStatus = oldRecord.status
-
-    // Skip if status hasn't changed
-    if (newStatus === oldStatus) {
-      return new Response(JSON.stringify({ message: 'Status unchanged, skipping' }), {
-        status: 200,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      })
-    }
-
-    const notificationContent = getNotificationContent(newStatus, orderId)
-    if (!notificationContent) {
-      return new Response(JSON.stringify({ message: `No notification defined for status: ${newStatus}` }), {
-        status: 200,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      })
-    }
-
     const supabase = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     )
 
-    // If user_id is null (guest order) we cannot push — skip
-    if (!userId) {
-      return new Response(JSON.stringify({ message: 'Guest order — no push token available' }), {
+    const body = await req.json()
+    const record = body.record
+    const oldRecord = body.old_record
+
+    if (!record || !oldRecord || record.status === oldRecord.status) {
+      return new Response(JSON.stringify({ received: true }), {
         status: 200,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       })
     }
 
-    // Server-side preference gate: check user's order_notifications flag
+    const orderId = record.id
+    const newStatus = record.status
+    const userId = record.user_id
+
+    if (!userId) {
+      return new Response(JSON.stringify({ received: true, skipped: 'no_user' }), {
+        status: 200,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      })
+    }
+
     const { data: prefs } = await supabase
       .from('user_preferences')
       .select('order_notifications')
@@ -136,47 +121,53 @@ serve(async (req) => {
       .maybeSingle()
 
     if (prefs && prefs.order_notifications === false) {
-      return new Response(JSON.stringify({ message: 'User has disabled order notifications — skipping' }), {
+      return new Response(JSON.stringify({ received: true, skipped: 'prefs_disabled' }), {
         status: 200,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       })
     }
 
-    // Fetch all push tokens for the user
-    const { data: tokens, error: tokensError } = await supabase
+    const { data: tokens } = await supabase
       .from('push_tokens')
       .select('token')
       .eq('user_id', userId)
 
-    if (tokensError || !tokens || tokens.length === 0) {
-      return new Response(JSON.stringify({ message: 'No push tokens found for user' }), {
+    if (!tokens || tokens.length === 0) {
+      return new Response(JSON.stringify({ received: true, skipped: 'no_tokens' }), {
         status: 200,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       })
     }
 
-    // Build push messages for all registered devices
+    const notification = getNotificationContent(newStatus, orderId)
+    if (!notification) {
+      return new Response(JSON.stringify({ received: true, skipped: 'no_content' }), {
+        status: 200,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      })
+    }
+
     const messages: PushMessage[] = tokens.map((t: { token: string }) => ({
       to: t.token,
-      title: notificationContent.title,
-      body: notificationContent.body,
+      title: notification.title,
+      body: notification.body,
       sound: 'default',
       data: {
-        screen: notificationContent.screen,
+        screen: notification.screen,
         params: { orderId },
       },
     }))
 
     await sendExpoPushNotifications(messages)
 
-    return new Response(JSON.stringify({ success: true, dispatched: messages.length }), {
+    return new Response(JSON.stringify({ received: true, dispatched: messages.length }), {
       status: 200,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     })
   } catch (err: any) {
     console.error('send-order-notification error:', err)
     return new Response(JSON.stringify({ error: err.message }), {
-      status: 500,
+      status: 400,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     })
   }

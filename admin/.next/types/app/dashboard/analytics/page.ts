@@ -1,4 +1,4 @@
-// File: /Users/ritesh/Downloads/Mobile shopping app with-PRD-Package/admin/app/dashboard/analytics/page.tsx
+// File: /Users/ritesh/Desktop/applicationgs/glassskin-app/admin/app/dashboard/analytics/page.tsx
 import * as entry from '../../../../../app/dashboard/analytics/page.js'
 import type { ResolvingMetadata, ResolvingViewport } from 'next/dist/lib/metadata/types/metadata-interface.js'
 

@@ -86,7 +86,7 @@ SELECT public.seed_user('00000000-0000-0000-0000-000000000099', 'admin@glassskin
 DROP FUNCTION public.seed_user(UUID, TEXT, TEXT);
 
 UPDATE public.users
-SET role = 'admin',
+SET "role" = 'admin',
     full_name = 'GLASSSKIN Admin',
     updated_at = NOW()
 WHERE id = '00000000-0000-0000-0000-000000000099';

@@ -1,0 +1,17 @@
+node_modules/
+admin/
+android/app/build/
+android/build/
+android/.gradle/
+android/.cxx/
+ios/build/
+ios/Pods/
+.next/
+dist/
+debug/
+release/
+models/
+public/
+*.tar.gz
+*.txt
+.git/

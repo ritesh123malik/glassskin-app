@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, SafeAreaView } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, SafeAreaView, Linking } from 'react-native';
 import { Mail, Lock, User, CheckSquare, Square } from 'lucide-react-native';
 import { GlassCard } from '../../components/common/GlassCard';
 import { GlassInput } from '../../components/common/GlassInput';
@@ -8,7 +8,15 @@ import { useAppStore } from '../../store/useAppStore';
 import { tokens } from '../../theme/tokens';
 import { typography } from '../../theme/typography';
 
-export const SignupScreen = ({ route, navigation }: any) => {
+import { NativeStackNavigationProp, RouteProp } from '@react-navigation/native-stack';
+import { RootStackParamList } from '../../navigation/AppNavigator';
+
+type Props = {
+  navigation: NativeStackNavigationProp<RootStackParamList, 'Signup'>;
+  route: RouteProp<RootStackParamList, 'Signup'>;
+};
+
+export const SignupScreen = ({ route, navigation }: Props) => {
   const { email: initialEmail = '', fullName: initialFullName = '' } = route.params || {};
 
   const [fullName, setFullName] = useState(initialFullName);
@@ -151,7 +159,10 @@ export const SignupScreen = ({ route, navigation }: any) => {
                 <Square size={20} color={tokens.colors.muted} />
               )}
               <Text style={styles.termsText}>
-                I agree to the <Text style={styles.termsLink}>Terms of Service</Text> and <Text style={styles.termsLink}>Privacy Policy</Text>
+                I agree to the{' '}
+                <Text style={styles.termsLink} onPress={() => Linking.openURL('https://glassskin.com/terms')}>Terms of Service</Text>
+                {' '}and{' '}
+                <Text style={styles.termsLink} onPress={() => Linking.openURL('https://glassskin.com/privacy')}>Privacy Policy</Text>
               </Text>
             </TouchableOpacity>
             {errors.agreedToTerms ? <Text style={styles.termsError}>{errors.agreedToTerms}</Text> : null}

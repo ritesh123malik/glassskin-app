@@ -1,6 +1,55 @@
+const fs = require('fs');
+const path = require('path');
+
+function loadEnv() {
+  const envPath = path.resolve(__dirname, '../../.env');
+  const content = fs.readFileSync(envPath, 'utf8');
+  const env = {};
+  for (const line of content.split('\n')) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith('#')) continue;
+    const [key, ...rest] = trimmed.split('=');
+    if (key && rest.length > 0) {
+      env[key.trim()] = rest.join('=').trim();
+    }
+  }
+  return env;
+}
+
+async function fetchProductName() {
+  const env = loadEnv();
+  const supabaseUrl = env.EXPO_PUBLIC_SUPABASE_URL;
+  const supabaseAnonKey = env.EXPO_PUBLIC_SUPABASE_ANON_KEY;
+
+  if (!supabaseUrl || !supabaseAnonKey) {
+    throw new Error('Missing Supabase credentials in .env');
+  }
+
+  const res = await fetch(`${supabaseUrl}/rest/v1/products?select=name&limit=1`, {
+    headers: {
+      apikey: supabaseAnonKey,
+      Authorization: `Bearer ${supabaseAnonKey}`,
+    },
+  });
+
+  if (!res.ok) {
+    throw new Error(`Failed to fetch product: ${res.statusText}`);
+  }
+
+  const products = await res.json();
+  if (!products || products.length === 0) {
+    throw new Error('No products found in seed data');
+  }
+
+  return products[0].name;
+}
+
 describe('GLASSSKIN E2E Checkout Flows', () => {
+  let productName = '';
+
   beforeEach(async () => {
     await device.launchApp({ newInstance: true });
+    productName = await fetchProductName();
   });
 
   it('should complete full guest checkout with test payment', async () => {
@@ -11,8 +60,8 @@ describe('GLASSSKIN E2E Checkout Flows', () => {
     await element(by.text('Get Started')).tap();
 
     // 2. We should land on HomeScreen. Tap on first product
-    await expect(element(by.text('Super Hydrator'))).toBeVisible();
-    await element(by.text('Super Hydrator')).tap();
+    await expect(element(by.text(productName))).toBeVisible();
+    await element(by.text(productName)).tap();
 
     // 3. ProductDetailScreen. Add to cart.
     await expect(element(by.text('Product Details'))).toBeVisible();
@@ -26,7 +75,7 @@ describe('GLASSSKIN E2E Checkout Flows', () => {
 
     // 4. CartScreen. Verify items.
     await expect(element(by.text('Shopping Cart'))).toBeVisible();
-    await expect(element(by.text('Super Hydrator'))).toBeVisible();
+    await expect(element(by.text(productName))).toBeVisible();
     await element(by.text('Proceed to Checkout')).tap();
 
     // 5. CheckoutScreen (Guest checkout). Fill out form.
@@ -42,21 +91,21 @@ describe('GLASSSKIN E2E Checkout Flows', () => {
     await element(by.id('checkout-postal-input')).typeText('90001');
     await element(by.id('checkout-state-input')).typeText('CA');
     
-    // Proceed to payment step
-    await element(by.text('Continue to Payment')).tap();
+    // Proceed to next step
+    await element(by.text('Next Step')).tap();
 
     // Enter test card details
     await element(by.id('checkout-card-number')).typeText('4242 4242 4242 4242');
     await element(by.id('checkout-card-expiry')).typeText('12/28');
     await element(by.id('checkout-card-cvv')).typeText('123');
 
-    await element(by.text('Review Order')).tap();
+    await element(by.text('Next Step')).tap();
 
     // Place Order and confirm payment
     await element(by.text('Place Order')).tap();
 
     // 6. Confirmation screen
-    await expect(element(by.text('Order Placed Successfully!'))).toBeVisible();
+    await expect(element(by.text('Order Placed!'))).toBeVisible();
     await element(by.text('Continue Shopping')).tap();
   });
 
@@ -73,7 +122,7 @@ describe('GLASSSKIN E2E Checkout Flows', () => {
 
     // 2. Select product & checkout
     await element(by.text('Home')).tap();
-    await element(by.text('Super Hydrator')).tap();
+    await element(by.text(productName)).tap();
     await element(by.text('Add to Cart')).tap();
     await element(by.text('OK')).tap();
 
@@ -81,8 +130,8 @@ describe('GLASSSKIN E2E Checkout Flows', () => {
     await element(by.text('Proceed to Checkout')).tap();
 
     // 3. Verify pre-filled address and continue
-    await element(by.text('Continue to Payment')).tap();
-    await element(by.text('Review Order')).tap();
+    await element(by.text('Next Step')).tap();
+    await element(by.text('Next Step')).tap();
     await element(by.text('Place Order')).tap();
 
     // 4. Navigate to order history in Profile

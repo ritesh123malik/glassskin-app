@@ -1,9 +1,13 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.38.4"
+import { getCorsHeaders, requireAuthenticatedUser } from "../_shared/verifyJwt.ts"
 
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+function utf8ToBase64(str: string): string {
+  return btoa(
+    Array.from(new TextEncoder().encode(str))
+      .map((byte) => String.fromCharCode(byte))
+      .join('')
+  )
 }
 
 async function getPayPalAccessToken() {
@@ -16,7 +20,7 @@ async function getPayPalAccessToken() {
     throw new Error('PAYPAL_CLIENT_ID or PAYPAL_CLIENT_SECRET is not configured on the backend')
   }
 
-  const auth = btoa(`${clientId}:${clientSecret}`)
+  const auth = utf8ToBase64(`${clientId}:${clientSecret}`)
   const res = await fetch(`${baseUrl}/v1/oauth2/token`, {
     method: 'POST',
     headers: {
@@ -35,33 +39,32 @@ async function getPayPalAccessToken() {
   return { accessToken: data.access_token, baseUrl }
 }
 
-async function getAuthenticatedUser(req: Request, supabase: any) {
-  const authHeader = req.headers.get('Authorization')
-  if (!authHeader?.startsWith('Bearer ')) {
-    throw new Error('Unauthorized: missing bearer token')
-  }
-
-  const token = authHeader.replace('Bearer ', '')
-  const { data, error } = await supabase.auth.getUser(token)
-  if (error || !data.user) {
-    throw new Error('Unauthorized: invalid bearer token')
-  }
-
-  return data.user
-}
-
-function assertOrderOwner(order: any, user: any) {
-  if (!order.user_id || order.user_id !== user.id) {
-    throw new Error('Forbidden: order does not belong to the authenticated user')
-  }
-}
-
 serve(async (req) => {
+  const requestOrigin = req.headers.get('origin')
+  const corsHeaders = getCorsHeaders(requestOrigin)
+
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders })
   }
 
+  if (!corsHeaders['Access-Control-Allow-Origin']) {
+    return new Response(JSON.stringify({ error: 'Origin not allowed' }), {
+      status: 403,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    })
+  }
+
   try {
+    const authResult = await requireAuthenticatedUser(req)
+    if ('error' in authResult) {
+      return new Response(JSON.stringify({ error: authResult.error }), {
+        status: authResult.status,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      })
+    }
+
+    const authenticatedUserId = authResult.userId
+
     const url = new URL(req.url)
     const action = url.pathname.split('/').pop()
 
@@ -69,7 +72,6 @@ serve(async (req) => {
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     )
-    const authUser = await getAuthenticatedUser(req, supabase)
 
     if (action === 'create') {
       const { orderId } = await req.json()
@@ -80,7 +82,6 @@ serve(async (req) => {
         })
       }
 
-      // 1. Fetch order details from Supabase
       const { data: order, error: orderError } = await supabase
         .from('orders')
         .select('*, items:order_items(*)')
@@ -100,9 +101,14 @@ serve(async (req) => {
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         })
       }
-      assertOrderOwner(order, authUser)
 
-      // 2. Recalculate totals and check stock availability
+      if (order.user_id !== authenticatedUserId) {
+        return new Response(JSON.stringify({ error: 'Forbidden: Order does not belong to you' }), {
+          status: 403,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        })
+      }
+
       const productIds = order.items.map((item: any) => item.product_id)
       const { data: dbProducts, error: dbProductsError } = await supabase
         .from('products')
@@ -122,7 +128,6 @@ serve(async (req) => {
           throw new Error(`Product not found in catalog: ${item.product_id}`)
         }
 
-        // Concurrency Stock Shortage Verification
         if (dbProduct.stock_quantity < item.quantity) {
           return new Response(
             JSON.stringify({
@@ -134,7 +139,7 @@ serve(async (req) => {
               message: `Only ${dbProduct.stock_quantity} left of "${dbProduct.name}" — please update your cart.`
             }),
             {
-              status: 409, // Conflict
+              status: 409,
               headers: { ...corsHeaders, 'Content-Type': 'application/json' },
             }
           )
@@ -156,7 +161,6 @@ serve(async (req) => {
         throw new Error(`Total amount validation failed. Expected: ${expectedTotal}, Client sent: ${order.total_amount}`)
       }
 
-      // 3. Connect to PayPal Orders API
       const { accessToken, baseUrl } = await getPayPalAccessToken()
       const paypalRes = await fetch(`${baseUrl}/v2/checkout/orders`, {
         method: 'POST',
@@ -220,7 +224,7 @@ serve(async (req) => {
 
       const { data: order, error: orderError } = await supabase
         .from('orders')
-        .select('id, user_id, status')
+        .select('*, items:order_items(*)')
         .eq('id', orderId)
         .single()
 
@@ -230,7 +234,44 @@ serve(async (req) => {
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         })
       }
-      assertOrderOwner(order, authUser)
+
+      if (order.user_id !== authenticatedUserId) {
+        return new Response(JSON.stringify({ error: 'Forbidden: Order does not belong to you' }), {
+          status: 403,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        })
+      }
+
+      const productIds = order.items.map((item: any) => item.product_id)
+      const { data: dbProducts, error: dbProductsError } = await supabase
+        .from('products')
+        .select('id, price, stock_quantity, name')
+        .in('id', productIds)
+
+      if (dbProductsError || !dbProducts) {
+        throw new Error(`Failed to fetch product catalog details: ${dbProductsError?.message}`)
+      }
+
+      const productsMap = new Map(dbProducts.map((p: any) => [p.id, p]))
+      
+      let calculatedSubtotal = 0
+      for (const item of order.items) {
+        const dbProduct = productsMap.get(item.product_id)
+        if (!dbProduct) {
+          throw new Error(`Product not found in catalog: ${item.product_id}`)
+        }
+
+        const price = parseFloat(dbProduct.price)
+        if (Math.abs(parseFloat(item.price) - price) > 0.01) {
+          throw new Error(`Price mismatch for product ${item.product_name}`)
+        }
+        calculatedSubtotal += price * item.quantity
+      }
+
+      const discount = parseFloat(order.discount_amount)
+      const tax = parseFloat(order.tax_amount)
+      const shipping = parseFloat(order.shipping_amount)
+      const expectedTotal = parseFloat((calculatedSubtotal - discount + tax + shipping).toFixed(2))
 
       const { accessToken, baseUrl } = await getPayPalAccessToken()
       const paypalRes = await fetch(`${baseUrl}/v2/checkout/orders/${paypalOrderId}/capture`, {
@@ -249,6 +290,24 @@ serve(async (req) => {
       const captureData = await paypalRes.json()
 
       if (captureData.status === 'COMPLETED') {
+        const capturedValue = parseFloat(captureData.purchase_units[0].payments.captures[0].amount.value)
+
+        if (Math.abs(capturedValue - expectedTotal) > 0.05) {
+          console.error(`PayPal capture amount mismatch. Expected: ${expectedTotal}, Captured: ${capturedValue}`)
+          const { error } = await supabase.rpc('fail_order_payment', { p_order_id: orderId })
+          if (error) throw error
+
+          return new Response(JSON.stringify({
+            error: 'CAPTURE_AMOUNT_MISMATCH',
+            expected: expectedTotal,
+            captured: capturedValue,
+            message: `Captured amount ${capturedValue} does not match expected total ${expectedTotal}. Order has been flagged and payment reversed.`
+          }), {
+            status: 400,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          })
+        }
+
         const { error } = await supabase.rpc('confirm_order_payment', { p_order_id: orderId })
         if (error) throw error
 

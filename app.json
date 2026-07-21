@@ -7,12 +7,15 @@
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
+    "splash": {
+      "image": "./assets/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#F6F2EE"
+    },
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.glassskin.app",
-      "entitlements": {
-        "aps-environment": "development"
-      }
+      "entitlements": {}
     },
     "android": {
       "package": "com.glassskin.app",
@@ -39,7 +42,9 @@
         }
       ],
       "permissions": [
-        "android.permission.RECORD_AUDIO"
+        "RECEIVE_BOOT_COMPLETED",
+        "VIBRATE",
+        "POST_NOTIFICATIONS"
       ]
     },
     "web": {
@@ -60,7 +65,7 @@
         "@stripe/stripe-react-native",
         {
           "merchantIdentifier": "merchant.com.glassskin",
-          "enableGooglePay": true
+          "enableGooglePay": false
         }
       ],
       [
@@ -76,14 +81,9 @@
     ],
     "extra": {
       "eas": {
-        "projectId": "314ac422-4463-420a-9b60-12e1cd793060"
+        "projectId": "693e96d6-c751-4682-bfa3-37f277eeda01"
       }
     },
-    "runtimeVersion": {
-      "policy": "appVersion"
-    },
-    "updates": {
-      "url": "https://u.expo.dev/314ac422-4463-420a-9b60-12e1cd793060"
-    }
+    "owner": "rm21"
   }
 }

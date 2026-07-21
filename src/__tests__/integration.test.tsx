@@ -28,6 +28,7 @@ jest.mock('../services/supabaseClient', () => {
   return {
     ...original,
     supabaseClient: {
+      ...original.supabaseClient,
       auth: {
         signInWithPassword: jest.fn(),
         signUp: jest.fn(),
@@ -38,6 +39,11 @@ jest.mock('../services/supabaseClient', () => {
       },
       from: mockFrom,
       rpc: jest.fn().mockResolvedValue({ data: [], error: null }),
+      channel: jest.fn().mockReturnValue({
+        on: jest.fn().mockReturnThis(),
+        subscribe: jest.fn(),
+      }),
+      removeChannel: jest.fn(),
     },
   };
 });

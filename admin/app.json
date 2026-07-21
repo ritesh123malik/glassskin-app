@@ -1,0 +1,12 @@
+{
+  "expo": {
+    "extra": {
+      "eas": {
+        "projectId": "f721ed42-5155-433f-8783-924a830d70d6"
+      }
+    },
+    "android": {
+      "package": "com.ritesh123malik.glassskinadmin"
+    }
+  }
+}

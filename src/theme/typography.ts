@@ -6,10 +6,10 @@ import { StyleSheet } from 'react-native';
  */
 const getTracking = (fontSize: number, emTracking: number) => fontSize * emTracking;
 
-export const typography = StyleSheet.create({
+export const typography = {
   wordmark: {
     fontFamily: 'Raleway_800ExtraBold',
-    textTransform: 'uppercase',
+    textTransform: 'uppercase' as const,
     // 0.35em tracking
     letterSpacing: getTracking(24, 0.35),
   },
@@ -24,14 +24,14 @@ export const typography = StyleSheet.create({
     fontSize: 11,
     // 0.32em tracking
     letterSpacing: getTracking(11, 0.32),
-    textTransform: 'uppercase',
+    textTransform: 'uppercase' as const,
   },
   italic: {
     fontFamily: 'PlayfairDisplay_400Regular_Italic',
     // -0.01em tracking
     letterSpacing: getTracking(16, -0.01),
   },
-});
+};
 
 export const getTypography = {
   wordmark: (fontSize: number) => ({

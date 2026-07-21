@@ -19,6 +19,13 @@ export const GlassCard: React.FC<GlassCardProps> = ({
   testID,
   ...props
 }) => {
+  if (intensity) {
+    console.warn(
+      '[GlassCard] The "intensity" prop is deprecated. Use "variant" instead: ' +
+      `variant="float-card" | "product-card" | "bento-item". Received: intensity="${intensity}"`
+    );
+  }
+
   const getVariantStyles = () => {
     switch (variant) {
       case 'product-card':
@@ -58,7 +65,9 @@ export const GlassCard: React.FC<GlassCardProps> = ({
           styles.base,
           variantStyles,
           {
-            // @ts-ignore
+            // @ts-expect-error React Native's View style prop does not include web-only CSS
+            // properties like backdropFilter / WebkitBackdropFilter / boxShadow. These are
+            // intentionally passed through on web for the frosted-glass effect.
             backdropFilter: 'blur(20px) saturate(180%)',
             WebkitBackdropFilter: 'blur(20px) saturate(180%)',
             boxShadow: '0 30px 60px -30px rgba(11,11,12,.25), inset 0 2px 0 rgba(255,255,255,.6)',

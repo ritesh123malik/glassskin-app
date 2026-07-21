@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { supabase } from '@/lib/supabase';
 import ProductForm, { type ProductFormData } from '@/components/ProductForm';
 import { ArrowLeft } from 'lucide-react';
+import { logAdminAudit } from '@/lib/auditLog';
 
 const EMPTY_PRODUCT: ProductFormData = {
   name: '',
@@ -29,14 +30,23 @@ export default function NewProductPage() {
   const handleSubmit = async (formData: ProductFormData) => {
     setSaving(true);
     const now = new Date().toISOString();
+    const slug = formData.name
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-|-$/g, '');
     const { error } = await supabase
       .from('products')
-      .insert({ ...formData, created_at: now, updated_at: now });
+      .insert({ ...formData, slug, created_at: now, updated_at: now });
 
     if (error) {
       alert(error.message);
       setSaving(false);
     } else {
+      await logAdminAudit({
+        action: 'product_create',
+        targetTable: 'products',
+        changes: { name: formData.name, price: formData.price, category: formData.category },
+      });
       router.push('/dashboard/products');
     }
   };

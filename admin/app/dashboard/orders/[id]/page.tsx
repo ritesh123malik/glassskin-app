@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { supabase } from '@/lib/supabase';
 import { formatCurrency, formatDate, orderStatusColor } from '@/lib/utils';
 import { ArrowLeft, RefreshCw } from 'lucide-react';
+import { logAdminAudit } from '@/lib/auditLog';
 
 type OrderItem = {
   id: string;
@@ -78,6 +79,12 @@ export default function OrderDetailPage() {
       alert(error.message);
     } else {
       setOrder({ ...order, status: newStatus });
+      await logAdminAudit({
+        action: 'order_status_update',
+        targetTable: 'orders',
+        targetId: order.id,
+        changes: { old_status: order.status, new_status: newStatus },
+      });
     }
     setUpdating(false);
   };

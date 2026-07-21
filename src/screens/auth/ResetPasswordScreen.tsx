@@ -9,7 +9,14 @@ import { useAppStore } from '../../store/useAppStore';
 import { tokens } from '../../theme/tokens';
 import { typography } from '../../theme/typography';
 
-export const ResetPasswordScreen = ({ navigation }: any) => {
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { RootStackParamList } from '../../navigation/AppNavigator';
+
+type Props = {
+  navigation: NativeStackNavigationProp<RootStackParamList, 'ResetPassword'>;
+};
+
+export const ResetPasswordScreen = ({ navigation }: Props) => {
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [errors, setErrors] = useState<{ password?: string; confirmPassword?: string }>({});

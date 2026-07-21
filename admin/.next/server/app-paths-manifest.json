@@ -1,13 +1,14 @@
 {
-  "/_not-found": "app/_not-found.js",
   "/login/page": "app/login/page.js",
+  "/api/auth/login/route": "app/api/auth/login/route.js",
   "/page": "app/page.js",
-  "/dashboard/products/[id]/edit/page": "app/dashboard/products/[id]/edit/page.js",
-  "/dashboard/products/page": "app/dashboard/products/page.js",
-  "/dashboard/orders/page": "app/dashboard/orders/page.js",
-  "/dashboard/orders/[id]/page": "app/dashboard/orders/[id]/page.js",
   "/dashboard/page": "app/dashboard/page.js",
+  "/dashboard/promo-codes/page": "app/dashboard/promo-codes/page.js",
+  "/dashboard/products/page": "app/dashboard/products/page.js",
+  "/dashboard/notifications/page": "app/dashboard/notifications/page.js",
+  "/dashboard/newsletter/page": "app/dashboard/newsletter/page.js",
   "/dashboard/settings/page": "app/dashboard/settings/page.js",
-  "/dashboard/analytics/page": "app/dashboard/analytics/page.js",
-  "/dashboard/products/new/page": "app/dashboard/products/new/page.js"
+  "/dashboard/user-preferences/page": "app/dashboard/user-preferences/page.js",
+  "/dashboard/audit-log/page": "app/dashboard/audit-log/page.js",
+  "/dashboard/analytics/page": "app/dashboard/analytics/page.js"
 }

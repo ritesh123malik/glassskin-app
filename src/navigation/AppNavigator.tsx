@@ -6,6 +6,7 @@ import { createNavigationContainerRef } from '@react-navigation/native';
 import { Home, Search, Heart, ShoppingCart, User } from 'lucide-react-native';
 import * as Notifications from 'expo-notifications';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { ErrorBoundary } from '../components/common/ErrorBoundary';
 
 // Screens
 import { OnboardingScreen } from '../screens/auth/OnboardingScreen';
@@ -51,15 +52,21 @@ export const linkingConfig = {
   prefixes: ['glassskin://'],
   config: {
     screens: {
+      Login: 'login',
+      Signup: 'signup',
+      ForgotPassword: 'forgot-password',
       MainTabs: {
         screens: {
           Cart: 'cart',
+          Wishlist: 'wishlist',
           Profile: 'profile',
         },
       },
+      Checkout: 'checkout',
+      Showroom3D: 'showroom-3d',
+      ProductDetails: 'product/:productId',
       OrderTracking: 'order/:orderId',
       OrderConfirmation: 'order-confirmation/:orderId',
-      ProductDetails: 'product/:productId',
       ResetPassword: 'auth-callback',
     },
   },
@@ -189,11 +196,29 @@ export const AppNavigator: React.FC<AppNavigatorProps> = ({ initialRouteName = '
       <Stack.Screen name="ForgotPassword" component={ForgotPasswordScreen} />
       <Stack.Screen name="ResetPassword" component={ResetPasswordScreen} />
       <Stack.Screen name="MainTabs" component={TabNavigator} />
-      <Stack.Screen name="ProductDetails" component={ProductDetailScreen} />
-      <Stack.Screen name="Checkout" component={CheckoutScreen} />
+      <Stack.Screen name="ProductDetails">
+        {() => (
+          <ErrorBoundary>
+            <ProductDetailScreen />
+          </ErrorBoundary>
+        )}
+      </Stack.Screen>
+      <Stack.Screen name="Checkout">
+        {() => (
+          <ErrorBoundary>
+            <CheckoutScreen />
+          </ErrorBoundary>
+        )}
+      </Stack.Screen>
       <Stack.Screen name="OrderConfirmation" component={OrderConfirmationScreen} />
       <Stack.Screen name="OrderTracking" component={OrderTrackingScreen} />
-      <Stack.Screen name="Showroom3D" component={Showroom3DScreen} />
+      <Stack.Screen name="Showroom3D">
+        {() => (
+          <ErrorBoundary>
+            <Showroom3DScreen />
+          </ErrorBoundary>
+        )}
+      </Stack.Screen>
       {__DEV__ && <Stack.Screen name="ComponentGallery" component={ComponentGalleryScreen} />}
     </Stack.Navigator>
   );

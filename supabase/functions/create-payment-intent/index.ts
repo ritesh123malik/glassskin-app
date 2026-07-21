@@ -1,15 +1,21 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.38.4"
 import Stripe from "https://esm.sh/stripe@12.18.0?target=deno"
-
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-}
+import { getCorsHeaders, requireAuthenticatedUser } from "../_shared/verifyJwt.ts"
 
 serve(async (req) => {
+  const requestOrigin = req.headers.get('origin')
+  const corsHeaders = getCorsHeaders(requestOrigin)
+
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders })
+  }
+
+  if (!corsHeaders['Access-Control-Allow-Origin']) {
+    return new Response(JSON.stringify({ error: 'Origin not allowed' }), {
+      status: 403,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    })
   }
 
   try {
@@ -17,6 +23,14 @@ serve(async (req) => {
     if (!orderId) {
       return new Response(JSON.stringify({ error: 'orderId is required' }), {
         status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      })
+    }
+
+    const authResult = await requireAuthenticatedUser(req)
+    if ('error' in authResult) {
+      return new Response(JSON.stringify({ error: authResult.error }), {
+        status: authResult.status,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       })
     }

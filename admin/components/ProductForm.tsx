@@ -129,9 +129,19 @@ export default function ProductForm({
   disabled = false,
 }: Props) {
   const [form, setForm] = useState<ProductFormData>(initialData);
+  const [errors, setErrors] = useState<Record<string, string>>({});
 
   const set = (field: keyof ProductFormData, value: unknown) => {
     setForm((prev) => ({ ...prev, [field]: value }));
+    setErrors((prev) => {
+      const next = { ...prev };
+      delete next[field];
+      return next;
+    });
+  };
+
+  const handleChipChange = (field: string, values: string[]) => {
+    set(field as keyof ProductFormData, values);
   };
 
   const handleChange = (
@@ -140,18 +150,40 @@ export default function ProductForm({
     >
   ) => {
     const { name, value, type } = e.target;
-    set(
-      name as keyof ProductFormData,
-      type === 'number' ? parseFloat(value) || 0 : value
-    );
+    if (type === 'number') {
+      if (value === '') {
+        set(name as keyof ProductFormData, NaN);
+      } else {
+        const num = parseFloat(value);
+        set(name as keyof ProductFormData, isNaN(num) ? NaN : num);
+      }
+    } else {
+      set(name as keyof ProductFormData, value);
+    }
   };
 
-  const handleChipChange = (field: string, values: string[]) => {
-    set(field as keyof ProductFormData, values);
+  const validate = (): boolean => {
+    const next: Record<string, string> = {};
+
+    if (isNaN(form.price) || form.price <= 0) {
+      next.price = 'Price must be a positive number';
+    }
+
+    if (isNaN(form.stock_quantity) || form.stock_quantity < 0) {
+      next.stock_quantity = 'Stock quantity must be 0 or greater';
+    }
+
+    if (form.compare_at_price !== undefined && !isNaN(form.compare_at_price) && form.compare_at_price < 0) {
+      next.compare_at_price = 'Compare-at price must be 0 or greater';
+    }
+
+    setErrors(next);
+    return Object.keys(next).length === 0;
   };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (!validate()) return;
     onSubmit(form);
   };
 
@@ -237,13 +269,18 @@ export default function ProductForm({
                 id="price"
                 type="number"
                 name="price"
-                value={form.price}
+                value={isNaN(form.price) ? '' : form.price}
                 onChange={handleChange}
                 required
                 step="0.01"
                 min="0"
-                className="w-full pl-7 pr-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                className={`w-full pl-7 pr-3 py-2.5 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent ${
+                  errors.price ? 'border-red-300' : 'border-gray-300'
+                }`}
               />
+              {errors.price && (
+                <p className="mt-1 text-sm text-red-600">{errors.price}</p>
+              )}
             </div>
           </div>
 
@@ -260,12 +297,17 @@ export default function ProductForm({
                 id="compare_at_price"
                 type="number"
                 name="compare_at_price"
-                value={form.compare_at_price}
+                value={isNaN(form.compare_at_price) ? '' : form.compare_at_price}
                 onChange={handleChange}
                 step="0.01"
                 min="0"
-                className="w-full pl-7 pr-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                className={`w-full pl-7 pr-3 py-2.5 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent ${
+                  errors.compare_at_price ? 'border-red-300' : 'border-gray-300'
+                }`}
               />
+              {errors.compare_at_price && (
+                <p className="mt-1 text-sm text-red-600">{errors.compare_at_price}</p>
+              )}
             </div>
           </div>
 
@@ -274,17 +316,22 @@ export default function ProductForm({
             <label htmlFor="stock_quantity" className="block text-sm font-medium text-gray-700 mb-1">
               Stock Quantity <span className="text-red-500">*</span>
             </label>
-            <input
-              id="stock_quantity"
-              type="number"
-              name="stock_quantity"
-              value={form.stock_quantity}
-              onChange={handleChange}
-              required
-              min="0"
-              step="1"
-              className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-            />
+              <input
+                id="stock_quantity"
+                type="number"
+                name="stock_quantity"
+                value={isNaN(form.stock_quantity) ? '' : form.stock_quantity}
+                onChange={handleChange}
+                required
+                min="0"
+                step="1"
+                className={`w-full px-3 py-2.5 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent ${
+                  errors.stock_quantity ? 'border-red-300' : 'border-gray-300'
+                }`}
+              />
+              {errors.stock_quantity && (
+                <p className="mt-1 text-sm text-red-600">{errors.stock_quantity}</p>
+              )}
           </div>
         </div>
       </div>
@@ -301,7 +348,7 @@ export default function ProductForm({
               <label
                 key={type}
                 className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm cursor-pointer border transition-colors ${
-                  form.skin_types.includes(type)
+                  (form.skin_types ?? []).includes(type)
                     ? 'bg-purple-100 border-purple-300 text-purple-800'
                     : 'bg-white border-gray-300 text-gray-600 hover:border-purple-300'
                 }`}
@@ -309,13 +356,13 @@ export default function ProductForm({
                 <input
                   type="checkbox"
                   className="sr-only"
-                  checked={form.skin_types.includes(type)}
+                  checked={(form.skin_types ?? []).includes(type)}
                   onChange={(e) => {
                     set(
                       'skin_types',
                       e.target.checked
-                        ? [...form.skin_types, type]
-                        : form.skin_types.filter((t) => t !== type)
+                        ? [...(form.skin_types ?? []), type]
+                        : (form.skin_types ?? []).filter((t) => t !== type)
                     );
                   }}
                 />
@@ -328,7 +375,7 @@ export default function ProductForm({
         <ChipInput
           label="Tags"
           field="tags"
-          values={form.tags}
+          values={form.tags ?? []}
           onChange={handleChipChange}
           placeholder="e.g. vegan, cruelty-free"
         />
@@ -336,7 +383,7 @@ export default function ProductForm({
         <ChipInput
           label="Certifications"
           field="certifications"
-          values={form.certifications}
+          values={form.certifications ?? []}
           onChange={handleChipChange}
           placeholder="e.g. COSMOS Organic, EWG Verified"
         />
@@ -344,7 +391,7 @@ export default function ProductForm({
         <ChipInput
           label="Image URLs"
           field="images"
-          values={form.images}
+          values={form.images ?? []}
           onChange={handleChipChange}
           placeholder="https://..."
         />

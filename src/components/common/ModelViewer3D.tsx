@@ -3,10 +3,13 @@ import { View, StyleSheet, Platform } from 'react-native';
 import { Asset } from 'expo-asset';
 import { Image } from 'expo-image';
 import { Skeleton } from './Skeleton';
-import { tokens } from '../../theme/tokens';
+
+export type ModelAsset =
+  | number
+  | { default?: number; uri?: string; localUri?: string };
 
 interface ModelViewer3DProps {
-  modelAsset: any; // e.g. require('../../assets/models/cosmetic_bottle_2.glb')
+  modelAsset: ModelAsset;
   fallbackImage?: string;
   testID?: string;
 }
@@ -14,14 +17,13 @@ interface ModelViewer3DProps {
 export const ModelViewer3D: React.FC<ModelViewer3DProps> = ({ modelAsset, fallbackImage, testID }) => {
   const [isLoading, setIsLoading] = useState(true);
   const [hasError, setHasError] = useState(false);
+  const [webModelUrl, setWebModelUrl] = useState<string | null>(null);
 
-  // Unpack default ES module export if wrapped by packager
   let assetVal = modelAsset;
   if (modelAsset && typeof modelAsset === 'object' && 'default' in modelAsset) {
     assetVal = modelAsset.default;
   }
 
-  // Fallback immediately if no asset is provided
   useEffect(() => {
     if (!modelAsset) {
       setHasError(true);
@@ -39,7 +41,6 @@ export const ModelViewer3D: React.FC<ModelViewer3DProps> = ({ modelAsset, fallba
   }
 
   let modelUri = '';
-  
   if (typeof assetVal === 'string') {
     modelUri = assetVal;
   } else if (resolvedAsset && (resolvedAsset.localUri || resolvedAsset.uri)) {
@@ -48,25 +49,67 @@ export const ModelViewer3D: React.FC<ModelViewer3DProps> = ({ modelAsset, fallba
     modelUri = assetVal.localUri || assetVal.uri || '';
   }
 
-  // Ensure absolute URL on Web to avoid relative routing errors
   if (Platform.OS === 'web' && modelUri && !modelUri.startsWith('http') && !modelUri.startsWith('data:')) {
     modelUri = window.location.origin + (modelUri.startsWith('/') ? '' : '/') + modelUri;
   }
 
-  // Log for debugging in console
-  console.log('ModelViewer3D Asset Trace:', {
-    Platform: Platform.OS,
-    uri: resolvedAsset?.uri,
-    localUri: resolvedAsset?.localUri,
-    modelUri
-  });
+  if (__DEV__) {
+    console.log('ModelViewer3D Asset Trace:', {
+      Platform: Platform.OS,
+      uri: resolvedAsset?.uri,
+      localUri: resolvedAsset.localUri,
+      modelUri,
+    });
+  }
+
+  useEffect(() => {
+    if (Platform.OS !== 'web') return;
+    let cancelled = false;
+    setIsLoading(true);
+    setHasError(false);
+    setWebModelUrl(null);
+
+    async function resolveWebModel() {
+      if (!modelUri) {
+        setHasError(true);
+        setIsLoading(false);
+        return;
+      }
+
+      try {
+        const response = await fetch(modelUri);
+        if (!response.ok) {
+          throw new Error(`Failed to fetch model: ${response.status}`);
+        }
+        const blob = await response.blob();
+        if (cancelled) return;
+        const blobUrl = URL.createObjectURL(blob);
+        setWebModelUrl(blobUrl);
+        setIsLoading(false);
+      } catch (err) {
+        console.error('ModelViewer3D web fetch error:', err);
+        if (!cancelled) {
+          setHasError(true);
+          setIsLoading(false);
+        }
+      }
+    }
+
+    resolveWebModel();
+
+    return () => {
+      cancelled = true;
+      if (webModelUrl) {
+        URL.revokeObjectURL(webModelUrl);
+      }
+    };
+  }, [modelUri]);
 
   if (Platform.OS === 'web') {
-    // Dynamic import script loader for Web
+    const scriptId = 'model-viewer-script';
     useEffect(() => {
       if (hasError) return;
-      const scriptId = 'model-viewer-script';
-      let script = document.getElementById(scriptId) as HTMLScriptElement;
+      let script = document.getElementById(scriptId) as HTMLScriptElement | null;
       if (!script) {
         script = document.createElement('script');
         script.id = scriptId;
@@ -76,7 +119,7 @@ export const ModelViewer3D: React.FC<ModelViewer3DProps> = ({ modelAsset, fallba
       }
     }, [hasError]);
 
-    if (hasError || !modelUri) {
+    if (hasError || !webModelUrl) {
       return (
         <View style={styles.webContainer}>
           {fallbackImage ? (
@@ -105,14 +148,13 @@ export const ModelViewer3D: React.FC<ModelViewer3DProps> = ({ modelAsset, fallba
             <Skeleton width="100%" height="100%" borderRadius={18} />
           </View>
         )}
-        {/* Render standard model-viewer HTML element on web */}
         <div
           style={{ width: '100%', height: '100%', minHeight: '350px', opacity: isLoading ? 0 : 1, transition: 'opacity 0.3s' }}
           dangerouslySetInnerHTML={{
             __html: `
               <model-viewer 
                 id="web-viewer"
-                src="${modelUri}" 
+                src="${webModelUrl}" 
                 camera-controls 
                 auto-rotate 
                 shadow-intensity="1" 
@@ -120,14 +162,15 @@ export const ModelViewer3D: React.FC<ModelViewer3DProps> = ({ modelAsset, fallba
                 style="width: 100%; height: 100%; min-height: 350px; background: transparent; outline: none;"
               ></model-viewer>
               <script>
-                document.getElementById('web-viewer').addEventListener('load', () => {
+                document.getElementById('web-viewer').addEventListener('load', function() {
                   window.dispatchEvent(new CustomEvent('model-loaded'));
                 });
-                document.getElementById('web-viewer').addEventListener('error', () => {
+                document.getElementById('web-viewer').addEventListener('error', function(err) {
+                  console.error('model-viewer error:', err);
                   window.dispatchEvent(new CustomEvent('model-error'));
                 });
               </script>
-            `
+            `,
           }}
         />
         <WebListener onLoad={() => setIsLoading(false)} onError={() => setHasError(true)} />
@@ -135,7 +178,6 @@ export const ModelViewer3D: React.FC<ModelViewer3DProps> = ({ modelAsset, fallba
     );
   }
 
-  // Native Mobile (iOS/Android) using WebView
   const { WebView } = require('react-native-webview');
 
   let baseUrl = '';
@@ -175,11 +217,12 @@ export const ModelViewer3D: React.FC<ModelViewer3DProps> = ({ modelAsset, fallba
           ></model-viewer>
         </div>
         <script>
-          const viewer = document.getElementById('viewer');
-          viewer.addEventListener('load', () => {
+          var viewer = document.getElementById('viewer');
+          viewer.addEventListener('load', function() {
             window.ReactNativeWebView.postMessage('loaded');
           });
-          viewer.addEventListener('error', (err) => {
+          viewer.addEventListener('error', function(err) {
+            console.error('model-viewer error:', err);
             window.ReactNativeWebView.postMessage('error');
           });
         </script>
@@ -215,10 +258,7 @@ export const ModelViewer3D: React.FC<ModelViewer3DProps> = ({ modelAsset, fallba
     <View style={styles.nativeContainer} testID={testID}>
       <WebView
         originWhitelist={['*']}
-        source={{ 
-          html: htmlContent, 
-          baseUrl: baseUrl 
-        }}
+        source={{ html: htmlContent, baseUrl: baseUrl }}
         style={[styles.webView, { opacity: isLoading ? 0 : 1 }]}
         javaScriptEnabled={true}
         domStorageEnabled={true}
@@ -272,7 +312,6 @@ export const ModelViewer3D: React.FC<ModelViewer3DProps> = ({ modelAsset, fallba
   );
 };
 
-// Small helper component to bind window listeners on web platform
 const WebListener = ({ onLoad, onError }: { onLoad: () => void; onError: () => void }) => {
   useEffect(() => {
     if (Platform.OS !== 'web') return;

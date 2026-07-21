@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { supabase } from '@/lib/supabase';
 import { Plus, Edit, Trash2, ImageOff, Search } from 'lucide-react';
 import { formatCurrency } from '@/lib/utils';
+import { logAdminAudit } from '@/lib/auditLog';
 
 type Product = {
   id: string;
@@ -25,13 +26,13 @@ export default function ProductsPage() {
 
   const fetchProducts = useCallback(async () => {
     setLoading(true);
-    const query = supabase
+    let query = supabase
       .from('products')
       .select('*')
       .order('created_at', { ascending: false });
 
     if (search) {
-      query.ilike('name', `%${search}%`);
+      query = query.ilike('name', `%${search}%`);
     }
 
     const { data, error } = await query;
@@ -51,7 +52,15 @@ export default function ProductsPage() {
     setDeleting(id);
     const { error } = await supabase.from('products').delete().eq('id', id);
     if (error) alert(error.message);
-    else setProducts((prev) => prev.filter((p) => p.id !== id));
+    else {
+      setProducts((prev) => prev.filter((p) => p.id !== id));
+      await logAdminAudit({
+        action: 'product_delete',
+        targetTable: 'products',
+        targetId: id,
+        changes: { name },
+      });
+    }
     setDeleting(null);
   };
 

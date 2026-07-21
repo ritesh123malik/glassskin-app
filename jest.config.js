@@ -6,7 +6,7 @@ module.exports = {
   setupFilesAfterEnv: [
     '<rootDir>/jest.setup.js'
   ],
-  testPathIgnorePatterns: ['/node_modules/', '<rootDir>/e2e/'],
+  testPathIgnorePatterns: ['/node_modules/', '<rootDir>/e2e/', '<rootDir>/admin/'],
   collectCoverage: true,
   collectCoverageFrom: [
     'src/store/**/*.{ts,tsx}',

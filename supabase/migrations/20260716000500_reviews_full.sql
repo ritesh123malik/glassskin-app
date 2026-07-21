@@ -11,15 +11,18 @@ ALTER TABLE public.reviews
 
 -- Filter: only published reviews shown publicly
 DROP POLICY IF EXISTS "Reviews are viewable by everyone" ON public.reviews;
+DROP POLICY IF EXISTS "Published reviews are viewable by everyone" ON public.reviews;
 CREATE POLICY "Published reviews are viewable by everyone" ON public.reviews
   FOR SELECT USING (status = 'published');
 
 -- Owners can update their own reviews (e.g. to add images post-upload)
 DROP POLICY IF EXISTS "Users can update own reviews" ON public.reviews;
+DROP POLICY IF EXISTS "Users can update own reviews" ON public.reviews;
 CREATE POLICY "Users can update own reviews" ON public.reviews
   FOR UPDATE USING (auth.uid() = user_id);
 
 -- Owners can delete their own reviews
+DROP POLICY IF EXISTS "Users can delete own reviews" ON public.reviews;
 DROP POLICY IF EXISTS "Users can delete own reviews" ON public.reviews;
 CREATE POLICY "Users can delete own reviews" ON public.reviews
   FOR DELETE USING (auth.uid() = user_id);
@@ -40,9 +43,11 @@ CREATE TABLE IF NOT EXISTS public.review_votes (
 
 ALTER TABLE public.review_votes ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Users can manage own votes" ON public.review_votes;
 CREATE POLICY "Users can manage own votes" ON public.review_votes
   FOR ALL USING (auth.uid() = user_id);
 
+DROP POLICY IF EXISTS "Votes are readable by authenticated users" ON public.review_votes;
 CREATE POLICY "Votes are readable by authenticated users" ON public.review_votes
   FOR SELECT USING (auth.role() = 'authenticated');
 
@@ -59,6 +64,7 @@ CREATE TABLE IF NOT EXISTS public.moderation_config (
 ALTER TABLE public.moderation_config ENABLE ROW LEVEL SECURITY;
 
 -- No user-facing SELECT — service role bypasses RLS
+DROP POLICY IF EXISTS "No public access to moderation config" ON public.moderation_config;
 CREATE POLICY "No public access to moderation config" ON public.moderation_config
   USING (false);
 
@@ -352,6 +358,7 @@ ON CONFLICT (id) DO UPDATE SET
 
 -- Storage RLS: authenticated users can upload to their own path only
 DROP POLICY IF EXISTS "Users upload to own review path" ON storage.objects;
+DROP POLICY IF EXISTS "Users upload to own review path" ON storage.objects;
 CREATE POLICY "Users upload to own review path" ON storage.objects
   FOR INSERT TO authenticated
   WITH CHECK (
@@ -362,6 +369,7 @@ CREATE POLICY "Users upload to own review path" ON storage.objects
 
 -- Storage RLS: users can delete their own review images
 DROP POLICY IF EXISTS "Users delete own review images" ON storage.objects;
+DROP POLICY IF EXISTS "Users delete own review images" ON storage.objects;
 CREATE POLICY "Users delete own review images" ON storage.objects
   FOR DELETE TO authenticated
   USING (
@@ -371,6 +379,7 @@ CREATE POLICY "Users delete own review images" ON storage.objects
   );
 
 -- Storage RLS: public read for all review images
+DROP POLICY IF EXISTS "Public read review images" ON storage.objects;
 DROP POLICY IF EXISTS "Public read review images" ON storage.objects;
 CREATE POLICY "Public read review images" ON storage.objects
   FOR SELECT USING (bucket_id = 'review-images');

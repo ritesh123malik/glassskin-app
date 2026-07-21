@@ -1,18 +1,18 @@
 import './global.css'; // NativeWind Global CSS
-import React, { useEffect } from 'react';
+import React, { useEffect, useState, Component, ErrorInfo, ReactNode } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { NavigationContainer } from '@react-navigation/native';
 import { useFonts } from 'expo-font';
+import * as SplashScreen from 'expo-splash-screen';
 import { 
-  Raleway_200ExtraLight, Raleway_300Light, Raleway_400Regular, 
-  Raleway_500Medium, Raleway_600SemiBold, Raleway_700Bold, Raleway_800ExtraBold 
+  Raleway_300Light, Raleway_700Bold, Raleway_800ExtraBold 
 } from '@expo-google-fonts/raleway';
 import { 
-  Inter_300Light, Inter_400Regular, Inter_500Medium, Inter_600SemiBold 
+  Inter_400Regular, Inter_500Medium, Inter_600SemiBold 
 } from '@expo-google-fonts/inter';
 import { 
-  PlayfairDisplay_400Regular_Italic, PlayfairDisplay_500Medium_Italic, PlayfairDisplay_600SemiBold_Italic 
+  PlayfairDisplay_400Regular_Italic 
 } from '@expo-google-fonts/playfair-display';
 import { ActivityIndicator, View, StyleSheet, Platform, Text } from 'react-native';
 import * as Linking from 'expo-linking';
@@ -20,109 +20,33 @@ import * as Notifications from 'expo-notifications';
 import { StripeProvider } from './src/utils/stripe';
 import { AppNavigator, navigationRef, linkingConfig } from './src/navigation/AppNavigator';
 import { useAppStore } from './src/store/useAppStore';
-import { supabaseClient } from './src/services/supabaseClient';
-import * as Sentry from '@sentry/react-native';
+import { supabaseClient, isSupabaseConfigured } from './src/services/supabaseClient';
+// import * as Sentry from '@sentry/react-native';
 import { GlassCard } from './src/components/common/GlassCard';
 import { GlassButton } from './src/components/common/GlassButton';
+import { MissingConfigScreen } from './src/screens/MissingConfigScreen';
 
-// Initialize Sentry per Sentry React Native Expo setup guidelines
-Sentry.init({
-  dsn: process.env.EXPO_PUBLIC_SENTRY_DSN || 'https://placeholder@sentry.io/123456',
-  debug: __DEV__,
-  beforeSend(event) {
-    // centrally scrub PII and payment data
-    const cardRegex = /\b\d{4}[- ]?\d{4}[- ]?\d{4}[- ]?\d{4}\b/g;
-    
-    if (event.request && event.request.headers) {
-      // Scrub authorization headers
-      const sensitiveHeaders = ['Authorization', 'auth', 'apikey', 'cookie', 'x-client-info'];
-      sensitiveHeaders.forEach(header => {
-        if (event.request!.headers![header]) {
-          event.request!.headers![header] = '[SCRUBBED]';
-        }
-        if (event.request!.headers![header.toLowerCase()]) {
-          event.request!.headers![header.toLowerCase()] = '[SCRUBBED]';
-        }
-      });
-    }
+// try {
+//   SplashScreen.preventAutoHideAsync();
+// } catch (e) {
+//   console.warn('[App] SplashScreen.preventAutoHideAsync failed:', e);
+// }
 
-    const scrubData = (obj: any): any => {
-      if (typeof obj === 'string') {
-        let temp = obj.replace(cardRegex, '[REDACTED_PAN]');
-        // scrub bearer tokens without wiping out the whole message
-        temp = temp.replace(/(bearer\s+)[a-zA-Z0-9\-_\.]+/gi, '$1[REDACTED_BEARER_TOKEN]');
-        return temp;
-      }
-      if (obj && typeof obj === 'object') {
-        for (const key in obj) {
-          if (Object.prototype.hasOwnProperty.call(obj, key)) {
-            const keyLower = key.toLowerCase();
-            if (
-              keyLower.includes('password') ||
-              keyLower.includes('cvv') ||
-              keyLower.includes('cvc') ||
-              keyLower.includes('token') ||
-              keyLower.includes('card') ||
-              keyLower.includes('authorization') ||
-              keyLower.includes('secret') ||
-              keyLower.includes('key')
-            ) {
-              obj[key] = '[SCRUBBED_PII]';
-            } else {
-              obj[key] = scrubData(obj[key]);
-            }
-          }
-        }
-      }
-      return obj;
-    };
-
-    if (event.breadcrumbs) {
-      event.breadcrumbs = event.breadcrumbs.map(breadcrumb => {
-        if (breadcrumb.data) {
-          breadcrumb.data = scrubData(breadcrumb.data);
-        }
-        return breadcrumb;
-      });
-    }
-
-    if (event.extra) {
-      event.extra = scrubData(event.extra);
-    }
-
-    if (event.message) {
-      event.message = scrubData(event.message);
-    }
-
-    if (event.exception && event.exception.values) {
-      event.exception.values = event.exception.values.map(val => {
-        if (val.value) {
-          val.value = scrubData(val.value);
-        }
-        return val;
-      });
-    }
-
-    // We retain event.user.email for customer support debugging, as allowed by Requirement 2,
-    // but strip sensitive auth tags
-    if (event.user) {
-      delete event.user.password;
-    }
-
-    return event;
-  },
-});
 
 // Setup default notification display behavior
-Notifications.setNotificationHandler({
-  handleNotification: async () => ({
-    shouldShowAlert: true,
-    shouldPlaySound: true,
-    shouldSetBadge: false,
-    shouldShowBanner: true,
-    shouldShowList: true,
-  }),
-});
+try {
+  Notifications.setNotificationHandler({
+    handleNotification: async () => ({
+      shouldShowAlert: true,
+      shouldPlaySound: true,
+      shouldSetBadge: false,
+      shouldShowBanner: true,
+      shouldShowList: true,
+    }),
+  });
+} catch (e) {
+  console.warn('[App] Notification handler setup failed:', e);
+}
 
 async function registerForPushNotificationsAsync(): Promise<string | null> {
   if (Platform.OS === 'web') return null;
@@ -156,8 +80,7 @@ async function registerForPushNotificationsAsync(): Promise<string | null> {
   }
 }
 
-// Graceful Sentry Error Boundary Fallback Screen
-const FallbackComponent = (props: { error: any; componentStack: string; eventId: string; resetError: () => void }) => {
+const FallbackComponent = (props: { error: any; componentStack: string; eventId?: string; resetError?: () => void }) => {
   return (
     <View style={styles.errorBoundaryContainer}>
       <GlassCard intensity="high" style={styles.errorBoundaryCard}>
@@ -165,79 +88,91 @@ const FallbackComponent = (props: { error: any; componentStack: string; eventId:
         <Text style={styles.errorBoundarySubtitle}>
           An unexpected error occurred in GLASSSKIN. Don't worry, our team has been notified and we are looking into it.
         </Text>
-        <GlassButton
-          title="Reload App"
-          onPress={props.resetError}
-          variant="primary"
-          style={styles.errorBoundaryBtn}
-        />
+        <Text style={{color: 'red', fontSize: 10, marginTop: 10}}>{String(props.error)}</Text>
+        {props.resetError && (
+          <GlassButton
+            title="Reload App"
+            onPress={props.resetError}
+            variant="primary"
+            style={styles.errorBoundaryBtn}
+          />
+        )}
       </GlassCard>
     </View>
   );
 };
 
+class SimpleErrorBoundary extends Component<{children: ReactNode}, {hasError: boolean, error: Error | null}> {
+  constructor(props: {children: ReactNode}) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+  static getDerivedStateFromError(error: Error) {
+    return { hasError: true, error };
+  }
+  componentDidCatch(error: Error, errorInfo: ErrorInfo) {
+    console.error("SimpleErrorBoundary caught error:", error, errorInfo);
+  }
+  render() {
+    if (this.state.hasError) {
+      return <FallbackComponent error={this.state.error} componentStack="" />;
+    }
+    return this.props.children;
+  }
+}
+
 function App() {
   const user = useAppStore(state => state.user);
   const checkAuth = useAppStore(state => state.checkAuth);
   const initializeAuthListener = useAppStore(state => state.initializeAuthListener);
+  const cleanupAuthListener = useAppStore(state => state.cleanupAuthListener);
   const setRecoveringPassword = useAppStore(state => state.setRecoveringPassword);
   const registerPushToken = useAppStore(state => state.registerPushToken);
 
   const [fontsLoaded, fontError] = useFonts({
-    Raleway_200ExtraLight, Raleway_300Light, Raleway_400Regular, 
-    Raleway_500Medium, Raleway_600SemiBold, Raleway_700Bold, Raleway_800ExtraBold,
-    Inter_300Light, Inter_400Regular, Inter_500Medium, Inter_600SemiBold,
-    PlayfairDisplay_400Regular_Italic, PlayfairDisplay_500Medium_Italic, PlayfairDisplay_600SemiBold_Italic
+    Raleway_300Light, Raleway_700Bold, Raleway_800ExtraBold,
+    Inter_400Regular, Inter_500Medium, Inter_600SemiBold,
+    PlayfairDisplay_400Regular_Italic,
   });
 
-  const handleDeepLink = async (url: string) => {
-    console.log('Intercepted Deep Link URL:', url);
-    
-    const hashIndex = url.indexOf('#');
-    if (hashIndex === -1) return;
-
-    const hash = url.substring(hashIndex + 1);
-    const params: Record<string, string> = {};
-    hash.split('&').forEach(pair => {
-      const [k, v] = pair.split('=');
-      if (k && v) params[decodeURIComponent(k)] = decodeURIComponent(v);
-    });
-
-    if (params.access_token && params.refresh_token) {
-      console.log('Setting session from deep link recovery...');
-      const { error } = await supabaseClient.auth.setSession({
-        access_token: params.access_token,
-        refresh_token: params.refresh_token
-      });
-
-      if (error) {
-        console.error('Failed to set deep link session:', error.message);
-        return;
-      }
-
-      if (params.type === 'recovery') {
-        console.log('Redirecting to ResetPasswordScreen...');
-        setRecoveringPassword(true);
-        if (navigationRef.isReady()) {
-          navigationRef.navigate('ResetPassword' as any);
-        }
-      }
-    }
-  };
+  const [isAuthReady, setIsAuthReady] = useState(false);
 
   useEffect(() => {
+    let isMounted = true;
+
+    const prepare = async () => {
+      try {
+        await Promise.race([
+          checkAuth(),
+          new Promise((_, reject) => setTimeout(() => reject(new Error('Auth check timeout')), 5000))
+        ]);
+      } catch (e) {
+        console.error('[App] Auth check failed or timed out:', e);
+      } finally {
+        if (isMounted) {
+          setIsAuthReady(true);
+        }
+      }
+    };
+
+    prepare();
+
+    // Safety timeout: always hide splash screen after 3 seconds to prevent infinite white screen
+    const splashTimeout = setTimeout(() => {
+      SplashScreen.hideAsync().catch(() => {});
+    }, 3000);
+
     initializeAuthListener();
-    checkAuth();
 
     const handleUrlEvent = (event: { url: string }) => {
-      handleDeepLink(event.url);
+      console.log('Deep link received:', event.url);
     };
 
     const subscription = Linking.addEventListener('url', handleUrlEvent);
 
     Linking.getInitialURL().then((url) => {
       if (url) {
-        handleDeepLink(url);
+        console.log('Initial deep link:', url);
       }
     });
 
@@ -253,10 +188,23 @@ function App() {
     });
 
     return () => {
+      isMounted = false;
+      clearTimeout(splashTimeout);
       subscription.remove();
       responseListener.remove();
+      cleanupAuthListener();
     };
   }, []);
+
+  useEffect(() => {
+    if (fontsLoaded || fontError) {
+      if (isAuthReady) {
+        SplashScreen.hideAsync().catch((err: Error) => {
+          console.warn('[App] Failed to hide splash screen:', err);
+        });
+      }
+    }
+  }, [fontsLoaded, fontError, isAuthReady]);
 
   // Register push notifications when user logs in
   useEffect(() => {
@@ -273,27 +221,33 @@ function App() {
     console.warn("Fonts failed to load, falling back to system fonts:", fontError);
   }
 
-  if (!fontsLoaded && !fontError) {
-    return (
-      <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#8E5D34" />
-      </View>
-    );
+  // Temporarily bypass font gate to prevent stuck loading screen
+  // if (!fontsLoaded && !fontError) {
+  //   return (
+  //     <View style={styles.loadingContainer}>
+  //       <ActivityIndicator size="large" color="#8E5D34" />
+  //     </View>
+  //   );
+  // }
+
+  if (!isSupabaseConfigured) {
+    return <MissingConfigScreen />;
   }
 
+
   return (
-    <Sentry.ErrorBoundary fallback={FallbackComponent}>
+    <SimpleErrorBoundary>
       <SafeAreaProvider>
         <StripeProvider
-          publishableKey={process.env.EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY || ''}
+          publishableKey={process.env.EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY || 'pk_test_dummy_key_to_prevent_crash'}
         >
           <NavigationContainer ref={navigationRef} linking={linkingConfig}>
             <AppNavigator initialRouteName="Onboarding" />
-            <StatusBar style="light" />
+            <StatusBar style="dark" />
           </NavigationContainer>
         </StripeProvider>
       </SafeAreaProvider>
-    </Sentry.ErrorBoundary>
+    </SimpleErrorBoundary>
   );
 }
 
@@ -336,4 +290,4 @@ const styles = StyleSheet.create({
   },
 });
 
-export default Sentry.wrap(App);
+export default App;

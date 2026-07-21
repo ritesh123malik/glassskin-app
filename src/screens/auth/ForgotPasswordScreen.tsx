@@ -8,7 +8,14 @@ import { useAppStore } from '../../store/useAppStore';
 import { tokens } from '../../theme/tokens';
 import { typography } from '../../theme/typography';
 
-export const ForgotPasswordScreen = ({ navigation }: any) => {
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { RootStackParamList } from '../../navigation/AppNavigator';
+
+type Props = {
+  navigation: NativeStackNavigationProp<RootStackParamList, 'ForgotPassword'>;
+};
+
+export const ForgotPasswordScreen = ({ navigation }: Props) => {
   const [email, setEmail] = useState('');
   const [error, setError] = useState<string | undefined>(undefined);
   const [success, setSuccess] = useState(false);

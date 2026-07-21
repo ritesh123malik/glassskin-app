@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useAdminAuth } from '@/lib/auth';
 import { CheckCircle, AlertTriangle } from 'lucide-react';
+import { logAdminAudit } from '@/lib/auditLog';
 
 type SectionProps = {
   title: string;
@@ -27,6 +28,7 @@ function Section({ title, description, children }: SectionProps) {
 
 export default function SettingsPage() {
   const { user } = useAdminAuth();
+  const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [pwStatus, setPwStatus] = useState<{
@@ -34,6 +36,7 @@ export default function SettingsPage() {
     msg: string;
   } | null>(null);
   const [saving, setSaving] = useState(false);
+  const [reauthError, setReauthError] = useState<string | null>(null);
 
   // Admin accounts list
   const [admins, setAdmins] = useState<{ id: string; email: string }[]>([]);
@@ -55,7 +58,12 @@ export default function SettingsPage() {
   const handlePasswordChange = async (e: React.FormEvent) => {
     e.preventDefault();
     setPwStatus(null);
+    setReauthError(null);
 
+    if (!currentPassword) {
+      setReauthError('Please enter your current password to verify your identity.');
+      return;
+    }
     if (newPassword !== confirmPassword) {
       setPwStatus({ type: 'error', msg: 'Passwords do not match.' });
       return;
@@ -66,15 +74,38 @@ export default function SettingsPage() {
     }
 
     setSaving(true);
-    const { error } = await supabase.auth.updateUser({ password: newPassword });
-    if (error) {
-      setPwStatus({ type: 'error', msg: error.message });
-    } else {
-      setPwStatus({ type: 'success', msg: 'Password updated successfully.' });
-      setNewPassword('');
-      setConfirmPassword('');
+    try {
+      const { error: reauthError } = await supabase.auth.signInWithPassword({
+        email: user!.email!,
+        password: currentPassword,
+      });
+
+      if (reauthError) {
+        setReauthError('Current password is incorrect. Please try again.');
+        setSaving(false);
+        return;
+      }
+
+      const { error } = await supabase.auth.updateUser({ password: newPassword });
+      if (error) {
+        setPwStatus({ type: 'error', msg: error.message });
+      } else {
+        setPwStatus({ type: 'success', msg: 'Password updated successfully.' });
+        setCurrentPassword('');
+        setNewPassword('');
+        setConfirmPassword('');
+        await logAdminAudit({
+          action: 'admin_password_change',
+          targetTable: 'auth.users',
+          targetId: user?.id,
+          changes: { email: user?.email },
+        });
+      }
+    } catch (err: any) {
+      setPwStatus({ type: 'error', msg: err.message || 'An unexpected error occurred.' });
+    } finally {
+      setSaving(false);
     }
-    setSaving(false);
   };
 
   return (
@@ -105,6 +136,13 @@ export default function SettingsPage() {
         description="Update your admin account password."
       >
         <form onSubmit={handlePasswordChange} className="space-y-4">
+          {reauthError && (
+            <div className="flex items-center gap-2 text-sm px-4 py-3 rounded-lg bg-red-50 text-red-700 border border-red-200">
+              <AlertTriangle size={15} />
+              {reauthError}
+            </div>
+          )}
+
           {pwStatus && (
             <div
               className={`flex items-center gap-2 text-sm px-4 py-3 rounded-lg ${
@@ -121,6 +159,24 @@ export default function SettingsPage() {
               {pwStatus.msg}
             </div>
           )}
+
+          <div>
+            <label
+              htmlFor="current-password"
+              className="block text-sm font-medium text-gray-700 mb-1"
+            >
+              Current Password
+            </label>
+            <input
+              id="current-password"
+              type="password"
+              value={currentPassword}
+              onChange={(e) => setCurrentPassword(e.target.value)}
+              required
+              className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+              placeholder="Enter your current password"
+            />
+          </div>
 
           <div>
             <label

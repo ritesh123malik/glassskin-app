@@ -83,15 +83,14 @@ export const ProductCard: React.FC<ProductCardProps> = ({ product, onPress, feat
 
 const styles = StyleSheet.create({
   container: {
-    flex: 1,
-    margin: 8,
-    // Adjust maximum width for regular grid layout vs feature card
-    maxWidth: '100%', 
+    width: '48%',
+    marginHorizontal: 4,
+    marginVertical: 6,
   },
   visual: {
     width: '100%',
     aspectRatio: 4 / 5,
-    backgroundColor: '#FAF6F2',
+    backgroundColor: tokens.colors.background,
     alignItems: 'center',
     justifyContent: 'center',
     overflow: 'hidden',

@@ -30,8 +30,8 @@ yarn-error.*
 .DS_Store
 *.pem
 
-# local env files
-.env*.local
+# env files
+.env*
 
 # typescript
 *.tsbuildinfo
@@ -42,6 +42,13 @@ yarn-error.*
 
 # local files
 coverage/
-.env
 project.zip
 user_prompts.txt
+
+# debug & temp files
+latest_crash.txt
+logcat.txt
+logcat_dump.txt
+build-*.tar.gz
+debug/
+release/

@@ -11,4 +11,12 @@ if (!config.resolver.assetExts.includes("wasm")) {
   config.resolver.assetExts.push("wasm");
 }
 
+// Block non-mobile directories from Metro resolution
+config.resolver.blockList = [
+  ...(config.resolver.blockList || []),
+  /^\/?admin\/.*$/,
+  /^\/?supabase\/functions\/.*$/,
+  /^\/?supabase\/tests\/.*$/,
+];
+
 module.exports = withNativeWind(config, { input: "./global.css" });

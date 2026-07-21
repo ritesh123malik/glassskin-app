@@ -30,10 +30,17 @@ type RecentOrder = {
   user_id: string;
 };
 
+type SectionErrors = {
+  orders?: string;
+  products?: string;
+  users?: string;
+};
+
 export default function DashboardPage() {
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [recentOrders, setRecentOrders] = useState<RecentOrder[]>([]);
   const [loading, setLoading] = useState(true);
+  const [errors, setErrors] = useState<SectionErrors>({});
 
   useEffect(() => {
     fetchDashboard();
@@ -41,7 +48,7 @@ export default function DashboardPage() {
 
   const fetchDashboard = async () => {
     try {
-      const [ordersRes, productsRes, usersRes] = await Promise.all([
+      const results = await Promise.allSettled([
         supabase
           .from('orders')
           .select('id, created_at, status, total_amount, user_id')
@@ -50,9 +57,28 @@ export default function DashboardPage() {
         supabase.from('users').select('id'),
       ]);
 
-      const orders = ordersRes.data ?? [];
-      const products = productsRes.data ?? [];
-      const users = usersRes.data ?? [];
+      const [ordersResult, productsResult, usersResult] = results;
+
+      const sectionErrors: SectionErrors = {};
+
+      if (ordersResult.status === 'rejected') {
+        sectionErrors.orders = 'Failed to load orders';
+        console.error('Dashboard orders fetch error:', ordersResult.reason);
+      }
+      if (productsResult.status === 'rejected') {
+        sectionErrors.products = 'Failed to load products';
+        console.error('Dashboard products fetch error:', productsResult.reason);
+      }
+      if (usersResult.status === 'rejected') {
+        sectionErrors.users = 'Failed to load customers';
+        console.error('Dashboard users fetch error:', usersResult.reason);
+      }
+
+      setErrors(sectionErrors);
+
+      const orders = ordersResult.status === 'fulfilled' ? (ordersResult.value.data ?? []) : [];
+      const products = productsResult.status === 'fulfilled' ? (productsResult.value.data ?? []) : [];
+      const users = usersResult.status === 'fulfilled' ? (usersResult.value.data ?? []) : [];
 
       const totalRevenue = orders
         .filter((o) => o.status === 'delivered')
@@ -114,6 +140,30 @@ export default function DashboardPage() {
 
   return (
     <div className="space-y-8">
+      {/* Per-section error banners */}
+      {(errors.orders || errors.products || errors.users) && (
+        <div className="flex flex-col gap-3">
+          {errors.orders && (
+            <div className="flex items-center gap-2 bg-red-50 border border-red-200 text-red-700 text-sm px-4 py-3 rounded-lg">
+              <AlertTriangle size={16} />
+              {errors.orders}
+            </div>
+          )}
+          {errors.products && (
+            <div className="flex items-center gap-2 bg-red-50 border border-red-200 text-red-700 text-sm px-4 py-3 rounded-lg">
+              <AlertTriangle size={16} />
+              {errors.products}
+            </div>
+          )}
+          {errors.users && (
+            <div className="flex items-center gap-2 bg-red-50 border border-red-200 text-red-700 text-sm px-4 py-3 rounded-lg">
+              <AlertTriangle size={16} />
+              {errors.users}
+            </div>
+          )}
+        </div>
+      )}
+
       <div>
         <h1 className="text-2xl font-bold text-gray-900">Dashboard</h1>
         <p className="mt-1 text-sm text-gray-500">

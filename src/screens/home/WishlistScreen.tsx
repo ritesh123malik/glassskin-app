@@ -5,8 +5,16 @@ import { useAppStore } from '../../store/useAppStore';
 import { GlassCard } from '../../components/common/GlassCard';
 import { Image } from 'expo-image';
 import { analytics } from '../../services/analytics';
+import { tokens } from '../../theme/tokens';
 
-export const WishlistScreen = ({ navigation }: any) => {
+import { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
+import { TabParamList } from '../../navigation/AppNavigator';
+
+type Props = {
+  navigation: BottomTabNavigationProp<TabParamList, 'Wishlist'>;
+};
+
+export const WishlistScreen = ({ navigation }: Props) => {
   const wishlistItems = useAppStore(state => state.wishlistItems);
   const fetchWishlist = useAppStore(state => state.fetchWishlist);
   const toggleWishlist = useAppStore(state => state.toggleWishlist);
@@ -160,7 +168,7 @@ export const WishlistScreen = ({ navigation }: any) => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F6F2EE',
+    backgroundColor: tokens.colors.background,
   },
   header: {
     paddingHorizontal: 20,
@@ -170,7 +178,7 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(255, 255, 255, 0.08)',
   },
   headerTitle: {
-    color: '#0B0B0C',
+    color: tokens.colors.ink,
     fontSize: 20,
     fontFamily: 'Raleway_700Bold',
     fontWeight: '700',
@@ -213,21 +221,21 @@ const styles = StyleSheet.create({
     marginRight: 8,
   },
   itemCategory: {
-    color: '#94A3B8',
+    color: tokens.colors.muted,
     fontSize: 10,
     textTransform: 'uppercase',
     fontFamily: 'Inter_400Regular',
     letterSpacing: 0.5,
   },
   itemName: {
-    color: '#0B0B0C',
+    color: tokens.colors.ink,
     fontSize: 14,
     fontFamily: 'Inter_500Medium',
     fontWeight: '500',
     marginTop: 2,
   },
   itemPrice: {
-    color: '#8E5D34',
+    color: tokens.colors.accent,
     fontSize: 14,
     fontFamily: 'Raleway_700Bold',
     fontWeight: '700',

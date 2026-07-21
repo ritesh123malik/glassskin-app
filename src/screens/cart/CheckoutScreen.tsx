@@ -1,18 +1,23 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, SafeAreaView, TextInput, Alert, Platform, Modal } from 'react-native';
-import { MapPin, CreditCard, ShoppingBag, Check } from 'lucide-react-native';
-import { WebView } from 'react-native-webview';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, SafeAreaView, TextInput, Alert, Platform } from 'react-native';
 import { useStripe } from '../../utils/stripe';
 import { useAppStore } from '../../store/useAppStore';
-import { GlassCard } from '../../components/common/GlassCard';
 import { GlassButton } from '../../components/common/GlassButton';
 import { ShippingAddress } from '../../types';
 import { SecureStoreAdapter, supabaseClient } from '../../services/supabaseClient';
 import { analytics } from '../../services/analytics';
 import { tokens } from '../../theme/tokens';
-import { typography } from '../../theme/typography';
 
-export const CheckoutScreen = ({ navigation }: any) => {
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { RootStackParamList } from '../../navigation/AppNavigator';
+
+import { CheckoutHeader, ProgressTracker, ShippingStep, PaymentStep, ReviewStep, PayPalModal, ProcessingOverlay } from './components';
+
+type Props = {
+  navigation: NativeStackNavigationProp<RootStackParamList, 'Checkout'>;
+};
+
+export const CheckoutScreen = ({ navigation }: Props) => {
   const cartItems = useAppStore(state => state.cartItems);
   const getCartTotals = useAppStore(state => state.getCartTotals);
   const createOrder = useAppStore(state => state.createOrder);
@@ -44,16 +49,19 @@ export const CheckoutScreen = ({ navigation }: any) => {
     country: 'United States',
   });
 
-  // Autocomplete suggestions states
-  const [predictions, setPredictions] = useState<any[]>([]);
-  const [showPredictions, setShowPredictions] = useState(false);
-  const [autocompleteUnavailable, setAutocompleteUnavailable] = useState(false);
-
   // Payment State
   const [paymentMethod, setPaymentMethod] = useState<'card' | 'paypal'>('card');
-  const [cardNumber, setCardNumber] = useState('');
-  const [cardExpiry, setCardExpiry] = useState('');
-  const [cardCVV, setCardCVV] = useState('');
+
+  // Server-computed totals state
+  const [serverTotals, setServerTotals] = useState<{
+    subtotal: number;
+    discount: number;
+    shipping: number;
+    tax: number;
+    total: number;
+    taxRate: number;
+  } | null>(null);
+  const [isLoadingTotals, setIsLoadingTotals] = useState(false);
 
   // 1. Load partial checkout progress on mount
   useEffect(() => {
@@ -89,71 +97,6 @@ export const CheckoutScreen = ({ navigation }: any) => {
     }
   };
 
-  // Google Places Autocomplete Geocoding Suggestions via Edge Function
-  const handleAddressChange = async (text: string) => {
-    setShippingAddress(prev => ({ ...prev, addressLine1: text }));
-    if (text.length < 3) {
-      setPredictions([]);
-      setShowPredictions(false);
-      return;
-    }
-
-    try {
-      const { data, error } = await supabaseClient.functions.invoke('google-places-autocomplete', {
-        body: { input: text }
-      });
-
-      if (error) {
-        console.error('Google Autocomplete Edge Function Error:', error);
-        setPredictions([]);
-        setShowPredictions(false);
-        setAutocompleteUnavailable(true);
-        return;
-      }
-
-      if (data && data.predictions) {
-        setPredictions(data.predictions);
-        setShowPredictions(true);
-        setAutocompleteUnavailable(false);
-      }
-    } catch (err) {
-      console.error('Google Autocomplete Error:', err);
-      setPredictions([]);
-      setShowPredictions(false);
-      setAutocompleteUnavailable(true);
-    }
-  };
-
-  const handleSelectPrediction = (item: any) => {
-    if (item.terms) {
-      // Terms Autopopulation (keep for backward compatibility with actual Google places terms if structure is same)
-      setShippingAddress({
-        fullName: shippingAddress.fullName,
-        addressLine1: item.terms[0]?.value || item.terms[0] || '',
-        city: item.terms[1]?.value || item.terms[1] || '',
-        state: item.terms[2]?.value || item.terms[2] || '',
-        postalCode: item.terms[3]?.value || item.terms[3] || '',
-        country: 'United States',
-      });
-    } else {
-      // Real API parsing fallback
-      const parts = item.description.split(',').map((s: string) => s.trim());
-      if (parts.length >= 3) {
-        const stateZip = parts[2].split(' ');
-        setShippingAddress({
-          fullName: shippingAddress.fullName,
-          addressLine1: parts[0],
-          city: parts[1],
-          state: stateZip[0] || '',
-          postalCode: stateZip[1] || parts[3] || '',
-          country: 'United States',
-        });
-      }
-    }
-    setPredictions([]);
-    setShowPredictions(false);
-  };
-
   const handleNextStep = async () => {
     if (step === 1) {
       if (!user) {
@@ -175,12 +118,6 @@ export const CheckoutScreen = ({ navigation }: any) => {
       setStep(next);
       await saveProgress(next);
     } else if (step === 2) {
-      if (paymentMethod === 'card') {
-        if (!cardNumber || !cardExpiry || !cardCVV) {
-          Alert.alert('Error', 'Please fill out card details.');
-          return;
-        }
-      }
       const next = 3;
       analytics.trackCheckoutStep(2, 'Payment Method Completed');
       setStep(next);
@@ -205,7 +142,7 @@ export const CheckoutScreen = ({ navigation }: any) => {
     };
 
     // Calculate totals matching the state-based region calculators
-    const calculatedTotals = getCalculatedTotals();
+    const calculatedTotals = displayTotals;
 
     analytics.trackCheckoutStep(3, 'Order Review Completed');
 
@@ -315,7 +252,7 @@ export const CheckoutScreen = ({ navigation }: any) => {
         if (success) {
           // Clear progress persistence on success
           await SecureStoreAdapter.removeItem('checkout_progress');
-          const totals = getCalculatedTotals();
+          const totals = displayTotals;
           analytics.trackPurchase(currentOrderId, totals.total, cartItems.length);
           navigation.navigate('OrderConfirmation', { 
             orderId: currentOrderId, 
@@ -333,11 +270,53 @@ export const CheckoutScreen = ({ navigation }: any) => {
   };
 
   // Pluggable Region Tax and Shipping calculators matching server-side rules
+  const fetchTotals = async () => {
+    setIsLoadingTotals(true);
+    try {
+      const { subtotal, discount } = getCartTotals();
+      const items = cartItems.map(item => ({
+        product_id: item.product_id,
+        quantity: item.quantity,
+      }));
+
+      const { data, error } = await supabaseClient.rpc('compute_order_totals', {
+        p_items: items,
+        p_promo_code: appliedPromo?.code || null,
+        p_state: shippingAddress.state || 'US',
+      });
+
+      if (error) throw error;
+
+      const result = data as any;
+      setServerTotals({
+        subtotal: parseFloat(result.subtotal),
+        discount: parseFloat(result.discount_amount),
+        shipping: parseFloat(result.shipping_amount),
+        tax: parseFloat(result.tax_amount),
+        total: parseFloat(result.total_amount),
+        taxRate: parseFloat(result.tax_rate),
+      });
+    } catch (err) {
+      console.error('Failed to fetch server-computed totals:', err);
+    } finally {
+      setIsLoadingTotals(false);
+    }
+  };
+
+  useEffect(() => {
+    if (shippingAddress.state || step >= 3) {
+      fetchTotals();
+    }
+  }, [shippingAddress.state, appliedPromo?.code, step]);
+
   const getCalculatedTotals = () => {
+    if (serverTotals) {
+      return serverTotals;
+    }
     const { subtotal, discount } = getCartTotals();
     const stateStr = shippingAddress.state.toUpperCase().trim();
     
-    let taxRate = 0.0700; // Default flat tax (7.0%)
+    let taxRate = 0.0700;
     if (stateStr === 'CA' || stateStr === 'CALIFORNIA') taxRate = 0.0825;
     else if (stateStr === 'NY' || stateStr === 'NEW YORK') taxRate = 0.08875;
     else if (stateStr === 'TX' || stateStr === 'TEXAS') taxRate = 0.0625;
@@ -357,290 +336,48 @@ export const CheckoutScreen = ({ navigation }: any) => {
       discount,
       shipping,
       tax,
-      total
+      total,
+      taxRate,
     };
   };
 
-  const totals = getCalculatedTotals();
+  const displayTotals = serverTotals || getCalculatedTotals();
 
   return (
     <SafeAreaView style={styles.container}>
-      {/* Header */}
-      <View style={styles.header}>
-        <TouchableOpacity style={styles.headerBtn} onPress={handlePrevStep}>
-          <Text style={styles.headerBtnText}>{step === 1 ? 'Cancel' : 'Back'}</Text>
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>Checkout</Text>
-        <View style={{ width: 80 }} />
-      </View>
-
-      {/* Progress Tracker */}
-      <View style={styles.progressBar}>
-        <View style={styles.progressRow}>
-          <View style={styles.stepIndicatorWrapper}>
-            <View style={[styles.stepIndicator, step >= 1 ? styles.stepActive : null]}>
-              {step > 1 ? <Check size={12} color="#0B0B0C" /> : <Text style={styles.stepText}>1</Text>}
-            </View>
-            <Text style={styles.stepLabel}>Shipping</Text>
-          </View>
-          <View style={[styles.progressLine, step >= 2 ? styles.lineActive : null]} />
-          <View style={styles.stepIndicatorWrapper}>
-            <View style={[styles.stepIndicator, step >= 2 ? styles.stepActive : null]}>
-              {step > 2 ? <Check size={12} color="#0B0B0C" /> : <Text style={styles.stepText}>2</Text>}
-            </View>
-            <Text style={styles.stepLabel}>Payment</Text>
-          </View>
-          <View style={[styles.progressLine, step >= 3 ? styles.lineActive : null]} />
-          <View style={styles.stepIndicatorWrapper}>
-            <View style={[styles.stepIndicator, step >= 3 ? styles.stepActive : null]}>
-              <Text style={styles.stepText}>3</Text>
-            </View>
-            <Text style={styles.stepLabel}>Confirm</Text>
-          </View>
-        </View>
-      </View>
+      <CheckoutHeader step={step} onBack={handlePrevStep} />
+      <ProgressTracker step={step} />
 
       <ScrollView contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
         {/* STEP 1: Shipping Address Form */}
         {step === 1 && (
-          <View>
-            <GlassCard variant="float-card" style={styles.formCard}>
-              <Text style={styles.sectionTitle}>Shipping Address</Text>
-              
-              {!user && (
-                <TextInput
-                  testID="checkout-email-input"
-                  placeholder="Email Address (for order updates)"
-                  placeholderTextColor="rgba(248, 250, 252, 0.4)"
-                  style={styles.input}
-                  value={guestEmail}
-                  onChangeText={setGuestEmail}
-                  keyboardType="email-address"
-                  autoCapitalize="none"
-                />
-              )}
-
-              <TextInput
-                testID="checkout-name-input"
-                placeholder="Full Name"
-                placeholderTextColor="rgba(248, 250, 252, 0.4)"
-                style={styles.input}
-                value={shippingAddress.fullName}
-                onChangeText={(text) => setShippingAddress(prev => ({ ...prev, fullName: text }))}
-              />
-
-              <TextInput
-                testID="checkout-address-input"
-                placeholder="Address Line 1"
-                placeholderTextColor="rgba(248, 250, 252, 0.4)"
-                style={styles.input}
-                value={shippingAddress.addressLine1}
-                onChangeText={handleAddressChange}
-              />
-              
-              {autocompleteUnavailable && (
-                <Text style={{ color: '#FCD34D', fontSize: 12, marginTop: -10, marginBottom: 15, marginLeft: 5 }}>
-                  Autocomplete unavailable. Please enter address manually.
-                </Text>
-              )}
-
-              {/* Suggestions dropdown */}
-              {showPredictions && predictions.length > 0 && (
-                <View style={styles.autocompleteContainer}>
-                  {predictions.map((item, index) => (
-                    <TouchableOpacity
-                      key={index}
-                      style={styles.autocompleteItem}
-                      onPress={() => handleSelectPrediction(item)}
-                    >
-                      <Text style={styles.autocompleteText}>{item.description}</Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
-              )}
-
-              <TextInput
-                testID="checkout-city-input"
-                placeholder="City"
-                placeholderTextColor="rgba(248, 250, 252, 0.4)"
-                style={styles.input}
-                value={shippingAddress.city}
-                onChangeText={(text) => setShippingAddress(prev => ({ ...prev, city: text }))}
-              />
-
-              <TextInput
-                testID="checkout-state-input"
-                placeholder="State (e.g. CA, NY, TX)"
-                placeholderTextColor="rgba(248, 250, 252, 0.4)"
-                style={styles.input}
-                value={shippingAddress.state}
-                onChangeText={(text) => setShippingAddress(prev => ({ ...prev, state: text }))}
-                autoCapitalize="characters"
-              />
-
-              <TextInput
-                testID="checkout-postal-input"
-                placeholder="Postal Code"
-                placeholderTextColor="rgba(248, 250, 252, 0.4)"
-                style={styles.input}
-                value={shippingAddress.postalCode}
-                onChangeText={(text) => setShippingAddress(prev => ({ ...prev, postalCode: text }))}
-                keyboardType="numeric"
-              />
-            </GlassCard>
-          </View>
+          <ShippingStep
+            shippingAddress={shippingAddress}
+            guestEmail={guestEmail}
+            onShippingChange={setShippingAddress}
+            onEmailChange={setGuestEmail}
+            isGuest={!user}
+          />
         )}
 
         {/* STEP 2: Payment Selector */}
         {step === 2 && (
-          <View>
-            <Text style={styles.sectionTitle}>Select Payment Method</Text>
-
-            {/* Credit Card Option */}
-            <TouchableOpacity 
-              style={[styles.paymentOption, paymentMethod === 'card' ? styles.paymentOptionActive : null]}
-              onPress={() => setPaymentMethod('card')}
-              activeOpacity={0.8}
-            >
-              <GlassCard variant="float-card" style={[styles.paymentCardInner, paymentMethod === 'card' && styles.paymentCardActive]}>
-                <View style={styles.paymentCardHeader}>
-                  <View style={styles.radioRow}>
-                    <View style={styles.radioButton}>
-                      {paymentMethod === 'card' && <View style={styles.radioButtonDot} />}
-                    </View>
-                    <Text style={styles.paymentOptionText}>Credit or Debit Card</Text>
-                  </View>
-                  <CreditCard size={20} color="#D9B79A" />
-                </View>
-
-                {paymentMethod === 'card' && (
-                  <View style={styles.cardForm}>
-                    <TextInput
-                      testID="checkout-card-number"
-                      placeholder="Card Number (Stripe test: 4242...)"
-                      placeholderTextColor="rgba(248, 250, 252, 0.4)"
-                      style={styles.input}
-                      value={cardNumber}
-                      onChangeText={setCardNumber}
-                      keyboardType="numeric"
-                    />
-                    <View style={styles.row}>
-                      <TextInput
-                        testID="checkout-card-expiry"
-                        placeholder="MM/YY"
-                        placeholderTextColor="rgba(248, 250, 252, 0.4)"
-                        style={[styles.input, { flex: 1, marginRight: 10 }]}
-                        value={cardExpiry}
-                        onChangeText={setCardExpiry}
-                      />
-                      <TextInput
-                        testID="checkout-card-cvv"
-                        placeholder="CVV"
-                        placeholderTextColor="rgba(248, 250, 252, 0.4)"
-                        style={[styles.input, { flex: 1 }]}
-                        value={cardCVV}
-                        onChangeText={setCardCVV}
-                        secureTextEntry
-                        keyboardType="numeric"
-                      />
-                    </View>
-                  </View>
-                )}
-              </GlassCard>
-            </TouchableOpacity>
-
-            {/* PayPal Option */}
-            <TouchableOpacity 
-              style={[styles.paymentOption, paymentMethod === 'paypal' ? styles.paymentOptionActive : null]}
-              onPress={() => setPaymentMethod('paypal')}
-              activeOpacity={0.8}
-            >
-              <GlassCard variant="float-card" style={[styles.paymentCardInner, paymentMethod === 'paypal' && styles.paymentCardActive]}>
-                <View style={styles.paymentCardHeader}>
-                  <View style={styles.radioRow}>
-                    <View style={styles.radioButton}>
-                      {paymentMethod === 'paypal' && <View style={styles.radioButtonDot} />}
-                    </View>
-                    <Text style={styles.paymentOptionText}>PayPal Checkout</Text>
-                  </View>
-                  <Text style={styles.paypalLogo}>PayPal</Text>
-                </View>
-              </GlassCard>
-            </TouchableOpacity>
-          </View>
+          <PaymentStep
+            paymentMethod={paymentMethod}
+            onSelect={setPaymentMethod}
+          />
         )}
 
         {/* STEP 3: Order Review */}
         {step === 3 && (
-          <View>
-            {/* Shipping details review */}
-            <GlassCard variant="float-card" style={styles.reviewCard}>
-              <View style={styles.reviewCardHeader}>
-                <MapPin size={16} color="#D9B79A" />
-                <Text style={styles.reviewCardTitle}>Shipping Details</Text>
-              </View>
-              <Text style={styles.reviewText}>{shippingAddress.fullName}</Text>
-              {!user && <Text style={styles.reviewText}>Email: {guestEmail}</Text>}
-              <Text style={styles.reviewText}>
-                {shippingAddress.addressLine1}, {shippingAddress.city}, {shippingAddress.state} {shippingAddress.postalCode}
-              </Text>
-            </GlassCard>
-
-            {/* Payment details review */}
-            <GlassCard variant="float-card" style={styles.reviewCard}>
-              <View style={styles.reviewCardHeader}>
-                <CreditCard size={16} color="#D9B79A" />
-                <Text style={styles.reviewCardTitle}>Payment Details</Text>
-              </View>
-              <Text style={styles.reviewText}>
-                {paymentMethod === 'card' ? `Credit Card ending in ${cardNumber.slice(-4)}` : 'PayPal Account'}
-              </Text>
-            </GlassCard>
-
-            {/* Cart products review */}
-            <GlassCard variant="float-card" style={styles.reviewCard}>
-              <View style={styles.reviewCardHeader}>
-                <ShoppingBag size={16} color="#D9B79A" />
-                <Text style={styles.reviewCardTitle}>Review Items</Text>
-              </View>
-              {cartItems.map((item) => (
-                <View key={item.id} style={styles.reviewItemRow}>
-                  <Text style={styles.reviewItemQty}>{item.quantity}x</Text>
-                  <Text style={styles.reviewItemName} numberOfLines={1}>{item.product?.name}</Text>
-                  <Text style={styles.reviewItemPrice}>
-                    ${((item.product?.price || 0) * item.quantity).toFixed(2)}
-                  </Text>
-                </View>
-              ))}
-            </GlassCard>
-
-            {/* Financial totals breakdown */}
-            <GlassCard variant="bento-item" style={styles.totalsCard}>
-              <View style={styles.totalRow}>
-                <Text style={styles.totalLabel}>Subtotal</Text>
-                <Text style={styles.totalVal}>${totals.subtotal.toFixed(2)}</Text>
-              </View>
-              {totals.discount > 0 && (
-                <View style={styles.totalRow}>
-                  <Text style={styles.totalLabel}>Discount</Text>
-                  <Text style={[styles.totalVal, styles.discountVal]}>-${totals.discount.toFixed(2)}</Text>
-                </View>
-              )}
-              <View style={styles.totalRow}>
-                <Text style={styles.totalLabel}>Shipping</Text>
-                <Text style={styles.totalVal}>{totals.shipping === 0 ? 'FREE' : `$${totals.shipping.toFixed(2)}`}</Text>
-              </View>
-              <View style={styles.totalRow}>
-                <Text style={styles.totalLabel}>Tax ({shippingAddress.state.toUpperCase()})</Text>
-                <Text style={styles.totalVal}>${totals.tax.toFixed(2)}</Text>
-              </View>
-              <View style={styles.divider} />
-              <View style={[styles.totalRow, styles.finalTotalRow]}>
-                <Text style={styles.finalTotalLabel}>Grand Total</Text>
-                <Text style={styles.finalTotalVal}>${totals.total.toFixed(2)}</Text>
-              </View>
-            </GlassCard>
-          </View>
+          <ReviewStep
+            shippingAddress={shippingAddress}
+            guestEmail={guestEmail}
+            isGuest={!user}
+            paymentMethod={paymentMethod}
+            cartItems={cartItems}
+            displayTotals={displayTotals}
+          />
         )}
       </ScrollView>
 
@@ -665,41 +402,15 @@ export const CheckoutScreen = ({ navigation }: any) => {
       </View>
 
       {/* PayPal In-App Checkout Modal */}
-      <Modal
+      <PayPalModal
         visible={paypalUrl !== null}
-        animationType="slide"
-        onRequestClose={() => setPaypalUrl(null)}
-      >
-        <SafeAreaView style={{ flex: 1, backgroundColor: '#F6F2EE' }}>
-          <View style={styles.modalHeader}>
-            <TouchableOpacity onPress={() => setPaypalUrl(null)} style={styles.closeBtn}>
-              <Text style={styles.closeBtnText}>Cancel</Text>
-            </TouchableOpacity>
-            <Text style={styles.modalTitle}>PayPal Checkout</Text>
-            <View style={{ width: 50 }} />
-          </View>
-          {paypalUrl && (
-            <WebView
-              source={{ uri: paypalUrl }}
-              onNavigationStateChange={handlePayPalNavigation}
-              startInLoadingState
-              renderLoading={() => (
-                <View style={styles.webviewLoader}>
-                  <ActivityIndicator size="large" color="#8E5D34" />
-                </View>
-              )}
-            />
-          )}
-        </SafeAreaView>
-      </Modal>
+        paypalUrl={paypalUrl}
+        onClose={() => setPaypalUrl(null)}
+        onNavigationStateChange={handlePayPalNavigation}
+      />
 
       {/* PayPal Processing Loading Overlay */}
-      {isPayPalProcessing && (
-        <View style={styles.processingOverlay}>
-          <ActivityIndicator size="large" color="#8E5D34" />
-          <Text style={styles.processingText}>Processing PayPal Payment...</Text>
-        </View>
-      )}
+      <ProcessingOverlay visible={isPayPalProcessing} />
     </SafeAreaView>
   );
 };
@@ -709,255 +420,9 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: tokens.colors.background,
   },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingTop: Platform.OS === 'ios' ? 10 : 20,
-    paddingBottom: 15,
-    borderBottomWidth: 1,
-    borderColor: tokens.colors.line,
-  },
-  headerTitle: {
-    ...typography.display,
-    color: tokens.colors.ink,
-    fontSize: 16,
-  },
-  headerBtn: {
-    paddingVertical: 4,
-    width: 80,
-  },
-  headerBtnText: {
-    color: tokens.colors.accent,
-    fontSize: 14,
-    fontFamily: 'Inter_500Medium',
-  },
-  progressBar: {
-    paddingHorizontal: 30,
-    paddingTop: 15,
-    paddingBottom: 10,
-    backgroundColor: tokens.colors.background,
-  },
-  progressRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    position: 'relative',
-    zIndex: 2,
-  },
-  stepIndicatorWrapper: {
-    alignItems: 'center',
-  },
-  stepIndicator: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    backgroundColor: tokens.colors.glass,
-    borderWidth: 1,
-    borderColor: tokens.colors.line,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 4,
-  },
-  stepActive: {
-    backgroundColor: tokens.colors.accent,
-    borderColor: tokens.colors.accent,
-  },
-  stepText: {
-    color: tokens.colors.ink,
-    fontSize: 11,
-    fontFamily: 'Raleway_700Bold',
-    fontWeight: '700',
-  },
-  stepLabel: {
-    color: tokens.colors.muted,
-    fontSize: 10,
-    fontFamily: 'Inter_500Medium',
-  },
-  progressLine: {
-    flex: 1,
-    height: 2,
-    backgroundColor: tokens.colors.line,
-    marginHorizontal: 10,
-    marginTop: -16,
-  },
-  lineActive: {
-    backgroundColor: tokens.colors.accent,
-  },
   scrollContent: {
     padding: 20,
     paddingBottom: 120,
-  },
-  formCard: {
-    padding: 20,
-    borderRadius: 20,
-  },
-  sectionTitle: {
-    ...typography.display,
-    color: tokens.colors.ink,
-    fontSize: 16,
-    marginBottom: 16,
-    paddingHorizontal: 4,
-  },
-  input: {
-    height: 48,
-    backgroundColor: tokens.colors.glass,
-    borderColor: tokens.colors.line,
-    borderWidth: 1,
-    borderRadius: 10,
-    paddingHorizontal: 16,
-    color: tokens.colors.ink,
-    fontSize: 14,
-    fontFamily: 'Inter_400Regular',
-    marginBottom: 12,
-  },
-  row: {
-    flexDirection: 'row',
-  },
-  paymentOption: {
-    marginBottom: 14,
-  },
-  paymentOptionActive: {
-    borderRadius: 20,
-  },
-  paymentCardInner: {
-    padding: 16,
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: 'transparent',
-  },
-  paymentCardActive: {
-    borderColor: tokens.colors.accent,
-    backgroundColor: tokens.colors.accentGlow,
-  },
-  paymentCardHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  radioRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  radioButton: {
-    width: 20,
-    height: 20,
-    borderRadius: 10,
-    borderWidth: 1.5,
-    borderColor: tokens.colors.muted,
-    marginRight: 12,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  radioButtonDot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-    backgroundColor: tokens.colors.accent,
-  },
-  paymentOptionText: {
-    color: tokens.colors.ink,
-    fontSize: 14,
-    fontFamily: 'Inter_500Medium',
-  },
-  cardForm: {
-    marginTop: 16,
-    paddingTop: 16,
-    borderTopWidth: 1,
-    borderTopColor: tokens.colors.line,
-  },
-  paypalLogo: {
-    color: '#0079C1',
-    fontFamily: 'Raleway_700Bold',
-    fontSize: 15,
-    fontWeight: 'bold',
-  },
-  reviewCard: {
-    padding: 16,
-    marginBottom: 12,
-  },
-  reviewCardHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 10,
-  },
-  reviewCardTitle: {
-    ...typography.eyebrow,
-    color: tokens.colors.muted,
-    marginLeft: 8,
-  },
-  reviewText: {
-    color: tokens.colors.ink,
-    fontSize: 14,
-    fontFamily: 'Inter_400Regular',
-    lineHeight: 20,
-  },
-  reviewItemRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    paddingVertical: 6,
-    borderBottomWidth: 1,
-    borderColor: tokens.colors.line,
-  },
-  reviewItemQty: {
-    color: tokens.colors.accent,
-    fontSize: 14,
-    fontFamily: 'Raleway_700Bold',
-    fontWeight: '700',
-    width: 24,
-  },
-  reviewItemName: {
-    color: tokens.colors.ink,
-    fontSize: 14,
-    fontFamily: 'Inter_400Regular',
-    flex: 1,
-  },
-  reviewItemPrice: {
-    color: tokens.colors.ink,
-    fontSize: 14,
-    fontFamily: 'Inter_500Medium',
-  },
-  totalsCard: {
-    padding: 16,
-    marginTop: 8,
-  },
-  totalRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 8,
-  },
-  totalLabel: {
-    color: tokens.colors.muted,
-    fontSize: 13,
-    fontFamily: 'Inter_400Regular',
-  },
-  totalVal: {
-    color: tokens.colors.ink,
-    fontSize: 13,
-    fontFamily: 'Inter_500Medium',
-  },
-  discountVal: {
-    color: '#10B981',
-  },
-  divider: {
-    height: 1,
-    backgroundColor: tokens.colors.line,
-    marginVertical: 12,
-  },
-  finalTotalRow: {
-    marginBottom: 0,
-  },
-  finalTotalLabel: {
-    ...typography.display,
-    color: tokens.colors.ink,
-    fontSize: 16,
-  },
-  finalTotalVal: {
-    color: tokens.colors.accent,
-    fontSize: 18,
-    fontFamily: 'Raleway_700Bold',
-    fontWeight: '700',
   },
   footer: {
     position: 'absolute',
@@ -975,75 +440,5 @@ const styles = StyleSheet.create({
   },
   nextBtn: {
     width: '100%',
-  },
-  modalHeader: {
-    height: 56,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: tokens.colors.line,
-  },
-  closeBtn: {
-    paddingVertical: 8,
-  },
-  closeBtnText: {
-    color: '#EF4444',
-    fontFamily: 'Inter_500Medium',
-    fontSize: 15,
-  },
-  modalTitle: {
-    ...typography.display,
-    color: tokens.colors.ink,
-    fontSize: 16,
-  },
-  webviewLoader: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: tokens.colors.background,
-  },
-  processingOverlay: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: 'rgba(255, 255, 255, 0.85)',
-    zIndex: 999,
-  },
-  processingText: {
-    color: tokens.colors.ink,
-    marginTop: 16,
-    fontSize: 15,
-    fontFamily: 'Inter_500Medium',
-  },
-  autocompleteContainer: {
-    backgroundColor: tokens.colors.surface,
-    borderColor: tokens.colors.line,
-    borderWidth: 1,
-    borderRadius: 8,
-    marginTop: -8,
-    marginBottom: 12,
-    maxHeight: 180,
-    zIndex: 10,
-  },
-  autocompleteItem: {
-    paddingVertical: 10,
-    paddingHorizontal: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: tokens.colors.line,
-  },
-  autocompleteText: {
-    color: tokens.colors.ink,
-    fontSize: 13,
-    fontFamily: 'Inter_400Regular',
   },
 });

@@ -8,28 +8,39 @@ import { analytics } from '../../services/analytics';
 import { tokens } from '../../theme/tokens';
 import { typography } from '../../theme/typography';
 
+import onboarding1 from '../../../assets/onboarding/onboarding-1.jpg';
+import onboarding2 from '../../../assets/onboarding/onboarding-2.jpg';
+import onboarding3 from '../../../assets/onboarding/onboarding-3.jpg';
+
 const slides = [
   {
     id: 1,
     title: 'Clean Beauty, Reimagined',
     description: 'Welcome to GLASSSKIN. We believe in natural, toxin-free skincare that nourishes your skin and enhances your natural radiance.',
-    image: 'https://images.unsplash.com/photo-1556228578-0d85b1a4d571?w=800&auto=format&fit=crop&q=80',
+    image: onboarding1,
   },
   {
     id: 2,
     title: 'Certified Organic & Pure',
     description: 'Our products are crafted with premium botanicals, certified organic ingredients, and are 100% cruelty-free.',
-    image: 'https://images.unsplash.com/photo-1608248597481-496100c80836?w=800&auto=format&fit=crop&q=80',
+    image: onboarding2,
   },
   {
     id: 3,
     title: 'Premium Shopping Experience',
     description: 'Discover your perfect skincare routine, save favorites to your wishlist, and enjoy secure checkout with order tracking.',
-    image: 'https://images.unsplash.com/photo-1620916566398-39f1143ab7be?w=800&auto=format&fit=crop&q=80',
+    image: onboarding3,
   },
 ];
 
-export const OnboardingScreen = ({ navigation }: any) => {
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { RootStackParamList } from '../../navigation/AppNavigator';
+
+type Props = {
+  navigation: NativeStackNavigationProp<RootStackParamList, 'Onboarding'>;
+};
+
+export const OnboardingScreen = ({ navigation }: Props) => {
   const [currentSlide, setCurrentSlide] = useState(0);
   const insets = useSafeAreaInsets();
 
@@ -50,7 +61,7 @@ export const OnboardingScreen = ({ navigation }: any) => {
   return (
     <View style={styles.container}>
       <Image
-        source={{ uri: slide.image }}
+        source={slide.image}
         style={StyleSheet.absoluteFillObject}
         contentFit="cover"
         transition={200}

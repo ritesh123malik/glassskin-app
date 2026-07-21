@@ -24,6 +24,7 @@ DROP POLICY IF EXISTS "Users can view own orders" ON public.orders;
 -- Restore the original, secure policy: each user (including anonymous) sees
 -- only their own orders, scoped to their unique auth.uid().
 -- Anonymous users now have a real UUID from signInAnonymously(), so this is safe.
+DROP POLICY IF EXISTS "Users can view own orders" ON public.orders;
 CREATE POLICY "Users can view own orders" ON public.orders
   FOR SELECT USING (auth.uid() = user_id);
 
@@ -31,6 +32,7 @@ CREATE POLICY "Users can view own orders" ON public.orders
 -- A guest calling create_order_transaction RPC (SECURITY DEFINER) inserts with
 -- the server-side p_user_id = auth.uid() of the anonymous session, so no bypass.
 -- The direct INSERT policy remains scoped:
+DROP POLICY IF EXISTS "Users can create own orders" ON public.orders;
 DROP POLICY IF EXISTS "Users can create own orders" ON public.orders;
 CREATE POLICY "Users can create own orders" ON public.orders
   FOR INSERT WITH CHECK (auth.uid() = user_id);
@@ -48,6 +50,7 @@ CREATE POLICY "Users can create own orders" ON public.orders
 -- stale version from any prior migration survives.
 
 DROP POLICY IF EXISTS "Users can view own order items" ON public.order_items;
+DROP POLICY IF EXISTS "Users can view own order items" ON public.order_items;
 CREATE POLICY "Users can view own order items" ON public.order_items
   FOR SELECT USING (
     EXISTS (
@@ -57,6 +60,7 @@ CREATE POLICY "Users can view own order items" ON public.order_items
     )
   );
 
+DROP POLICY IF EXISTS "Users can insert own order items" ON public.order_items;
 DROP POLICY IF EXISTS "Users can insert own order items" ON public.order_items;
 CREATE POLICY "Users can insert own order items" ON public.order_items
   FOR INSERT WITH CHECK (
@@ -117,12 +121,13 @@ RETURNS TRIGGER AS $$
 BEGIN
   -- Insert all users (including anonymous Supabase users whose email is NULL)
   -- since public.users.email is now nullable.
-  INSERT INTO public.users (id, email, full_name, phone)
+  INSERT INTO public.users (id, email, full_name, phone, "role")
   VALUES (
     new.id,
     new.email,
     COALESCE(new.raw_user_meta_data->>'full_name', new.raw_user_meta_data->>'name', ''),
-    new.phone
+    new.phone,
+    'customer'
   )
   ON CONFLICT (id) DO UPDATE
     SET email     = EXCLUDED.email,
@@ -137,7 +142,7 @@ $$ LANGUAGE plpgsql SECURITY DEFINER;
 -- Re-attach the trigger (CREATE OR REPLACE on the function is enough, but
 -- we DROP/CREATE to be explicit about the trigger definition too).
 DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
-CREATE OR REPLACE TRIGGER on_auth_user_created
+DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users; CREATE OR REPLACE TRIGGER on_auth_user_created
   AFTER INSERT ON auth.users
   FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
 

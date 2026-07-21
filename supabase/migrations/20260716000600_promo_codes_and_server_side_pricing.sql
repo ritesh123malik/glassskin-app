@@ -25,9 +25,18 @@ CREATE TABLE IF NOT EXISTS public.promo_codes (
 );
 
 -- RLS: table is NOT directly selectable by clients; access only via SECURITY DEFINER RPCs
+-- Admin panel needs full CRUD to manage promo codes.
 ALTER TABLE public.promo_codes ENABLE ROW LEVEL SECURITY;
 
--- No direct SELECT policy — clients must call validate_promo_code() RPC
+-- Admin full CRUD
+DROP POLICY IF EXISTS "Admins can manage promo codes" ON public.promo_codes;
+CREATE POLICY "Admins can manage promo codes"
+  ON public.promo_codes FOR ALL
+  TO authenticated
+  USING (public.is_admin())
+  WITH CHECK (public.is_admin());
+
+-- No direct SELECT policy for regular users — clients must call validate_promo_code() RPC
 -- Service-role key (used by Edge Functions) bypasses RLS by default.
 
 -- ─────────────────────────────────────────────────────────────────────────────

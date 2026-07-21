@@ -10,17 +10,18 @@ SELECT set_config('search_path', 'public,extensions', false);
 -- ==========================================
 
 -- Public Users profile table (linked to auth.users)
-CREATE TABLE public.users (
+CREATE TABLE IF NOT EXISTS public.users (
   id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
   email TEXT UNIQUE NOT NULL,
   full_name TEXT,
   phone TEXT,
+  "role" TEXT NOT NULL DEFAULT 'customer' CHECK ("role" IN ('customer', 'admin')),
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
 -- Products table
-CREATE TABLE public.products (
+CREATE TABLE IF NOT EXISTS public.products (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   name TEXT NOT NULL,
   slug TEXT UNIQUE NOT NULL,
@@ -42,7 +43,7 @@ CREATE TABLE public.products (
 );
 
 -- Cart items table
-CREATE TABLE public.cart_items (
+CREATE TABLE IF NOT EXISTS public.cart_items (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID REFERENCES public.users(id) ON DELETE CASCADE NOT NULL,
   product_id UUID REFERENCES public.products(id) ON DELETE CASCADE NOT NULL,
@@ -51,7 +52,7 @@ CREATE TABLE public.cart_items (
 );
 
 -- Wishlist table
-CREATE TABLE public.wishlists (
+CREATE TABLE IF NOT EXISTS public.wishlists (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID REFERENCES public.users(id) ON DELETE CASCADE NOT NULL,
   product_id UUID REFERENCES public.products(id) ON DELETE CASCADE NOT NULL,
@@ -60,7 +61,7 @@ CREATE TABLE public.wishlists (
 );
 
 -- Orders table
-CREATE TABLE public.orders (
+CREATE TABLE IF NOT EXISTS public.orders (
   id TEXT PRIMARY KEY, -- Custom tracking IDs like GS-123456
   user_id UUID REFERENCES public.users(id) ON DELETE SET NULL,
   status TEXT DEFAULT 'pending' CHECK (status IN ('pending', 'processing', 'shipped', 'delivered', 'cancelled')),
@@ -75,7 +76,7 @@ CREATE TABLE public.orders (
 );
 
 -- Order items table
-CREATE TABLE public.order_items (
+CREATE TABLE IF NOT EXISTS public.order_items (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   order_id TEXT REFERENCES public.orders(id) ON DELETE CASCADE NOT NULL,
   product_id UUID REFERENCES public.products(id) ON DELETE SET NULL,
@@ -86,7 +87,7 @@ CREATE TABLE public.order_items (
 );
 
 -- Reviews table
-CREATE TABLE public.reviews (
+CREATE TABLE IF NOT EXISTS public.reviews (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID REFERENCES public.users(id) ON DELETE CASCADE NOT NULL,
   product_id UUID REFERENCES public.products(id) ON DELETE CASCADE NOT NULL,
@@ -98,7 +99,7 @@ CREATE TABLE public.reviews (
 );
 
 -- Addresses table
-CREATE TABLE public.addresses (
+CREATE TABLE IF NOT EXISTS public.addresses (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID REFERENCES public.users(id) ON DELETE CASCADE NOT NULL,
   full_name TEXT NOT NULL,
@@ -114,7 +115,7 @@ CREATE TABLE public.addresses (
 );
 
 -- Payment methods table
-CREATE TABLE public.payment_methods (
+CREATE TABLE IF NOT EXISTS public.payment_methods (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID REFERENCES public.users(id) ON DELETE CASCADE NOT NULL,
   provider TEXT NOT NULL,
@@ -170,11 +171,11 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
-CREATE TRIGGER update_users_updated_at BEFORE UPDATE ON public.users FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
-CREATE TRIGGER update_products_updated_at BEFORE UPDATE ON public.products FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
-CREATE TRIGGER update_orders_updated_at BEFORE UPDATE ON public.orders FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
-CREATE TRIGGER update_addresses_updated_at BEFORE UPDATE ON public.addresses FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
-CREATE TRIGGER update_payment_methods_updated_at BEFORE UPDATE ON public.payment_methods FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
+DROP TRIGGER IF EXISTS update_users_updated_at ON public.users; CREATE TRIGGER update_users_updated_at BEFORE UPDATE ON public.users FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
+DROP TRIGGER IF EXISTS update_products_updated_at ON public.products; CREATE TRIGGER update_products_updated_at BEFORE UPDATE ON public.products FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
+DROP TRIGGER IF EXISTS update_orders_updated_at ON public.orders; CREATE TRIGGER update_orders_updated_at BEFORE UPDATE ON public.orders FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
+DROP TRIGGER IF EXISTS update_addresses_updated_at ON public.addresses; CREATE TRIGGER update_addresses_updated_at BEFORE UPDATE ON public.addresses FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
+DROP TRIGGER IF EXISTS update_payment_methods_updated_at ON public.payment_methods; CREATE TRIGGER update_payment_methods_updated_at BEFORE UPDATE ON public.payment_methods FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
 
 
 -- ==========================================
@@ -184,18 +185,19 @@ CREATE TRIGGER update_payment_methods_updated_at BEFORE UPDATE ON public.payment
 CREATE OR REPLACE FUNCTION public.handle_new_user()
 RETURNS TRIGGER AS $$
 BEGIN
-  INSERT INTO public.users (id, email, full_name, phone)
+  INSERT INTO public.users (id, email, full_name, phone, "role")
   VALUES (
     new.id,
     new.email,
     COALESCE(new.raw_user_meta_data->>'full_name', new.raw_user_meta_data->>'name', ''),
-    new.phone
+    new.phone,
+    'customer'
   );
   RETURN NEW;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
-CREATE OR REPLACE TRIGGER on_auth_user_created
+DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users; CREATE OR REPLACE TRIGGER on_auth_user_created
   AFTER INSERT ON auth.users
   FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
 
@@ -216,33 +218,42 @@ ALTER TABLE public.payment_methods ENABLE ROW LEVEL SECURITY;
 
 -- users policies
 -- Justification: A user can only view and update their own profile details to protect personal identity data.
+DROP POLICY IF EXISTS "Users can view own profile" ON public.users;
 CREATE POLICY "Users can view own profile" ON public.users FOR SELECT USING (auth.uid() = id);
+DROP POLICY IF EXISTS "Users can update own profile" ON public.users;
 CREATE POLICY "Users can update own profile" ON public.users FOR UPDATE USING (auth.uid() = id);
 
 -- products policies
 -- Justification: Product catalogs must be publicly readable by guest and authenticated users alike. Only admins (direct DB/API write access) can edit products.
+DROP POLICY IF EXISTS "Products are viewable by everyone" ON public.products;
 CREATE POLICY "Products are viewable by everyone" ON public.products FOR SELECT USING (true);
 
 -- cart_items policies
 -- Justification: Cart items represent a private shopping session; users must not be able to view, add, edit, or delete another user's cart.
+DROP POLICY IF EXISTS "Users can manage own cart" ON public.cart_items;
 CREATE POLICY "Users can manage own cart" ON public.cart_items FOR ALL USING (auth.uid() = user_id);
 
 -- wishlists policies
 -- Justification: Wishlist items are private; users must not be able to view, add, or delete another user's wishlist.
+DROP POLICY IF EXISTS "Users can manage own wishlist" ON public.wishlists;
 CREATE POLICY "Users can manage own wishlist" ON public.wishlists FOR ALL USING (auth.uid() = user_id);
 
 -- orders policies
 -- Justification: Orders contain financial and address details; users can view and insert only their own orders. Modification is blocked.
+DROP POLICY IF EXISTS "Users can view own orders" ON public.orders;
 CREATE POLICY "Users can view own orders" ON public.orders FOR SELECT USING (auth.uid() = user_id);
+DROP POLICY IF EXISTS "Users can create own orders" ON public.orders;
 CREATE POLICY "Users can create own orders" ON public.orders FOR INSERT WITH CHECK (auth.uid() = user_id);
 
 -- order_items policies
 -- Justification: Order items belong to parent orders; users can view order items only if they own the parent order.
+DROP POLICY IF EXISTS "Users can view own order items" ON public.order_items;
 CREATE POLICY "Users can view own order items" ON public.order_items FOR SELECT USING (
   EXISTS (
     SELECT 1 FROM public.orders WHERE public.orders.id = order_items.order_id AND public.orders.user_id = auth.uid()
   )
 );
+DROP POLICY IF EXISTS "Users can insert own order items" ON public.order_items;
 CREATE POLICY "Users can insert own order items" ON public.order_items FOR INSERT WITH CHECK (
   EXISTS (
     SELECT 1 FROM public.orders WHERE public.orders.id = order_items.order_id AND public.orders.user_id = auth.uid()
@@ -251,17 +262,23 @@ CREATE POLICY "Users can insert own order items" ON public.order_items FOR INSER
 
 -- reviews policies
 -- Justification: Reviews are public consumer content, readable by all. Creating reviews is limited to authenticated users posting under their own name.
+DROP POLICY IF EXISTS "Reviews are viewable by everyone" ON public.reviews;
 CREATE POLICY "Reviews are viewable by everyone" ON public.reviews FOR SELECT USING (true);
+DROP POLICY IF EXISTS "Authenticated users can create reviews" ON public.reviews;
 CREATE POLICY "Authenticated users can create reviews" ON public.reviews FOR INSERT WITH CHECK (auth.uid() = user_id);
+DROP POLICY IF EXISTS "Users can update own reviews" ON public.reviews;
 CREATE POLICY "Users can update own reviews" ON public.reviews FOR UPDATE USING (auth.uid() = user_id);
+DROP POLICY IF EXISTS "Users can delete own reviews" ON public.reviews;
 CREATE POLICY "Users can delete own reviews" ON public.reviews FOR DELETE USING (auth.uid() = user_id);
 
 -- addresses policies
 -- Justification: Address listings contain private residence info; users can only perform read/write actions on their own addresses.
+DROP POLICY IF EXISTS "Users can manage own addresses" ON public.addresses;
 CREATE POLICY "Users can manage own addresses" ON public.addresses FOR ALL USING (auth.uid() = user_id);
 
 -- payment_methods policies
 -- Justification: Saved credit card tokens or billing setups are highly sensitive; users can only perform read/write actions on their own payment settings.
+DROP POLICY IF EXISTS "Users can manage own payment methods" ON public.payment_methods;
 CREATE POLICY "Users can manage own payment methods" ON public.payment_methods FOR ALL USING (auth.uid() = user_id);
 
 

@@ -14,9 +14,39 @@ CREATE TABLE IF NOT EXISTS public.push_tokens (
 -- Enable RLS on push_tokens
 ALTER TABLE public.push_tokens ENABLE ROW LEVEL SECURITY;
 
+-- Admin policies
+DROP POLICY IF EXISTS "Admins can read push tokens" ON public.push_tokens;
+CREATE POLICY "Admins can read push tokens"
+  ON public.push_tokens FOR SELECT
+  TO authenticated
+  USING (public.is_admin());
+
+DROP POLICY IF EXISTS "Admins can manage push tokens" ON public.push_tokens;
+CREATE POLICY "Admins can manage push tokens"
+  ON public.push_tokens FOR INSERT
+  TO authenticated
+  WITH CHECK (public.is_admin());
+
+DROP POLICY IF EXISTS "Admins can update push tokens" ON public.push_tokens;
+CREATE POLICY "Admins can update push tokens"
+  ON public.push_tokens FOR UPDATE
+  TO authenticated
+  USING (public.is_admin())
+  WITH CHECK (public.is_admin());
+
+DROP POLICY IF EXISTS "Admins can delete push tokens" ON public.push_tokens;
+CREATE POLICY "Admins can delete push tokens"
+  ON public.push_tokens FOR DELETE
+  TO authenticated
+  USING (public.is_admin());
+
+-- Users can manage their own tokens
 DROP POLICY IF EXISTS "Users can manage own tokens" ON public.push_tokens;
-CREATE POLICY "Users can manage own tokens" ON public.push_tokens
-  FOR ALL USING (auth.uid() = user_id);
+CREATE POLICY "Users can manage own tokens"
+  ON public.push_tokens FOR ALL
+  TO authenticated
+  USING (auth.uid() = user_id)
+  WITH CHECK (auth.uid() = user_id);
 
 
 -- 2. Create user_preferences table
@@ -32,9 +62,39 @@ CREATE TABLE IF NOT EXISTS public.user_preferences (
 -- Enable RLS on user_preferences
 ALTER TABLE public.user_preferences ENABLE ROW LEVEL SECURITY;
 
+-- Admin policies
+DROP POLICY IF EXISTS "Admins can read user preferences" ON public.user_preferences;
+CREATE POLICY "Admins can read user preferences"
+  ON public.user_preferences FOR SELECT
+  TO authenticated
+  USING (public.is_admin());
+
+DROP POLICY IF EXISTS "Admins can manage user preferences" ON public.user_preferences;
+CREATE POLICY "Admins can manage user preferences"
+  ON public.user_preferences FOR INSERT
+  TO authenticated
+  WITH CHECK (public.is_admin());
+
+DROP POLICY IF EXISTS "Admins can update user preferences" ON public.user_preferences;
+CREATE POLICY "Admins can update user preferences"
+  ON public.user_preferences FOR UPDATE
+  TO authenticated
+  USING (public.is_admin())
+  WITH CHECK (public.is_admin());
+
+DROP POLICY IF EXISTS "Admins can delete user preferences" ON public.user_preferences;
+CREATE POLICY "Admins can delete user preferences"
+  ON public.user_preferences FOR DELETE
+  TO authenticated
+  USING (public.is_admin());
+
+-- Users can manage their own preferences
 DROP POLICY IF EXISTS "Users can manage own preferences" ON public.user_preferences;
-CREATE POLICY "Users can manage own preferences" ON public.user_preferences
-  FOR ALL USING (auth.uid() = user_id);
+CREATE POLICY "Users can manage own preferences"
+  ON public.user_preferences FOR ALL
+  TO authenticated
+  USING (auth.uid() = user_id)
+  WITH CHECK (auth.uid() = user_id);
 
 
 -- 3. Create database trigger to auto-initialize default preferences for new users

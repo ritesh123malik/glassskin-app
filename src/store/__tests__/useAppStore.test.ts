@@ -9,9 +9,15 @@ jest.mock('../../services/supabaseClient', () => ({
     eq: jest.fn().mockReturnThis(),
     maybeSingle: jest.fn().mockResolvedValue({ data: null, error: null }),
     rpc: jest.fn(),
+    channel: jest.fn().mockReturnValue({
+      on: jest.fn().mockReturnThis(),
+      subscribe: jest.fn(),
+    }),
+    removeChannel: jest.fn(),
     auth: {
       getUser: jest.fn().mockResolvedValue({ data: { user: null }, error: null }),
       onAuthStateChange: jest.fn().mockReturnValue({ data: { subscription: { unsubscribe: jest.fn() } } }),
+      signInAnonymously: jest.fn(),
     },
   },
   SecureStoreAdapter: {
@@ -236,7 +242,16 @@ describe('useAppStore Zustand Store Unit Tests', () => {
         ]
       });
 
-      // Mock create_order_transaction RPC returning the order object
+      mockRpc.mockResolvedValueOnce({
+        data: {
+          total_amount: 64.20,
+          tax_amount: 4.20,
+          shipping_amount: 0.00,
+          discount_amount: 0.00,
+        },
+        error: null
+      });
+
       mockRpc.mockResolvedValueOnce({
         data: {
           id: 'GS-123456',
@@ -277,11 +292,16 @@ describe('useAppStore Zustand Store Unit Tests', () => {
         p_payment_method: 'card',
         p_promo_code: null,
       }));
-      const [, rpcArgs] = mockRpc.mock.calls[0];
-      expect(rpcArgs).not.toHaveProperty('p_total_amount');
-      expect(rpcArgs).not.toHaveProperty('p_tax_amount');
-      expect(rpcArgs).not.toHaveProperty('p_shipping_amount');
-      expect(rpcArgs).not.toHaveProperty('p_discount_amount');
+      const [, computeArgs] = mockRpc.mock.calls[0];
+      expect(computeArgs).not.toHaveProperty('p_total_amount');
+      expect(computeArgs).not.toHaveProperty('p_tax_amount');
+      expect(computeArgs).not.toHaveProperty('p_shipping_amount');
+      expect(computeArgs).not.toHaveProperty('p_discount_amount');
+      const [, createArgs] = mockRpc.mock.calls[1];
+      expect(createArgs).toHaveProperty('p_total_amount');
+      expect(createArgs).toHaveProperty('p_tax_amount');
+      expect(createArgs).toHaveProperty('p_shipping_amount');
+      expect(createArgs).toHaveProperty('p_discount_amount');
     });
 
     it('should handle order creation failures gracefully', async () => {

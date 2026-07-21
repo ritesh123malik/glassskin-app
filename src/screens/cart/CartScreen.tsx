@@ -14,7 +14,14 @@ import { typography } from '../../theme/typography';
 
 const FLOATING_TAB_BAR_CLEARANCE = 96;
 
-export const CartScreen = ({ navigation }: any) => {
+import { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
+import { TabParamList } from '../../navigation/AppNavigator';
+
+type Props = {
+  navigation: BottomTabNavigationProp<TabParamList, 'Cart'>;
+};
+
+export const CartScreen = ({ navigation }: Props) => {
   const insets = useSafeAreaInsets();
   const cartItems = useAppStore(state => state.cartItems);
   const fetchCart = useAppStore(state => state.fetchCart);
@@ -287,7 +294,11 @@ export const CartScreen = ({ navigation }: any) => {
                     {appliedPromo && (
                       <View style={styles.appliedPromoBadge}>
                         <Text style={styles.appliedPromoText}>
-                          Code: {appliedPromo.code} ({appliedPromo.discountPercent}% Off)
+                          Code: {appliedPromo.code} (
+                          {appliedPromo.discountType === 'percent'
+                            ? `${appliedPromo.discountValue}% Off`
+                            : `$${appliedPromo.discountValue} Off`}
+                          )
                         </Text>
                         <TouchableOpacity onPress={removePromoCode}>
                           <X size={14} color="#EF4444" />
@@ -356,7 +367,7 @@ export const CartScreen = ({ navigation }: any) => {
 
         {/* Undoable Deletion Snackbar */}
         {snackbarVisible && lastRemovedItem && (
-          <View style={styles.snackbar}>
+          <View style={[styles.snackbar, { bottom: insets.bottom + FLOATING_TAB_BAR_CLEARANCE }]}>
             <Text style={styles.snackbarText} numberOfLines={1}>
               Removed "{lastRemovedItem.item.product?.name}"
             </Text>
@@ -639,7 +650,6 @@ const styles = StyleSheet.create({
   },
   snackbar: {
     position: 'absolute',
-    bottom: 100,
     left: 20,
     right: 20,
     backgroundColor: tokens.colors.surface,

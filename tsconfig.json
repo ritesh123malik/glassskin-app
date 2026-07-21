@@ -5,6 +5,10 @@
   },
   "exclude": [
     "node_modules",
-    "supabase"
+    "supabase",
+    "admin",
+    "e2e",
+    "dist",
+    "web-build"
   ]
 }

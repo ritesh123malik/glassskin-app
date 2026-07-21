@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { View, Text, StyleSheet, SafeAreaView, Platform, ScrollView, ActivityIndicator } from 'react-native';
 import { Sparkles, CheckCircle2, XCircle } from 'lucide-react-native';
 import { GlassCard } from '../../components/common/GlassCard';
@@ -7,9 +7,19 @@ import { supabaseClient } from '../../services/supabaseClient';
 import { tokens } from '../../theme/tokens';
 import { typography } from '../../theme/typography';
 
-export const OrderConfirmationScreen = ({ route, navigation }: any) => {
+import { NativeStackNavigationProp, RouteProp } from '@react-navigation/native-stack';
+import { RootStackParamList } from '../../navigation/AppNavigator';
+
+type Props = {
+  navigation: NativeStackNavigationProp<RootStackParamList, 'OrderConfirmation'>;
+  route: RouteProp<RootStackParamList, 'OrderConfirmation'>;
+};
+
+export const OrderConfirmationScreen = ({ route, navigation }: Props) => {
   const { orderId, guestEmail, guestName } = route.params || {};
   const [orderStatus, setOrderStatus] = useState<'payment_pending' | 'processing' | 'cancelled' | 'pending' | 'shipped' | 'delivered'>('payment_pending');
+  const channelRef = useRef<ReturnType<typeof supabaseClient.channel> | null>(null);
+  const isSubscribedRef = useRef(false);
 
   useEffect(() => {
     let isMounted = true;
@@ -53,9 +63,14 @@ export const OrderConfirmationScreen = ({ route, navigation }: any) => {
       )
       .subscribe();
 
+    channelRef.current = channel;
+    isSubscribedRef.current = true;
+
     return () => {
       isMounted = false;
-      supabaseClient.removeChannel(channel);
+      if (isSubscribedRef.current && channelRef.current) {
+        supabaseClient.removeChannel(channelRef.current);
+      }
     };
   }, [orderId]);
 
@@ -110,6 +125,26 @@ export const OrderConfirmationScreen = ({ route, navigation }: any) => {
     );
   }
 
+  if (!orderId) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <View style={styles.pendingContainer}>
+          <XCircle size={64} color="#EF4444" style={{ marginBottom: 16 }} />
+          <Text style={styles.pendingTitle}>Order Details Unavailable</Text>
+          <Text style={styles.pendingText}>
+            We could not retrieve your order information. If you just completed a purchase, please try again or contact support.
+          </Text>
+          <GlassButton
+            title="Continue Shopping"
+            onPress={handleContinueShopping}
+            variant="secondary"
+            style={{ width: '100%', marginTop: 24 }}
+          />
+        </View>
+      </SafeAreaView>
+    );
+  }
+
   return (
     <SafeAreaView style={styles.container}>
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
@@ -126,7 +161,7 @@ export const OrderConfirmationScreen = ({ route, navigation }: any) => {
 
           <GlassCard variant="float-card" style={styles.card}>
             <Text style={styles.orderLabel}>Order Number</Text>
-            <Text style={styles.orderNumber}>{orderId || 'GS-829103'}</Text>
+            <Text style={styles.orderNumber}>{orderId}</Text>
             
             <View style={styles.divider} />
 

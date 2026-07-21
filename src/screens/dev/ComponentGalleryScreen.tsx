@@ -28,7 +28,14 @@ const mockProduct: Product = {
   updated_at: '',
 };
 
-export const ComponentGalleryScreen = ({ navigation }: any) => {
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { RootStackParamList } from '../../navigation/AppNavigator';
+
+type Props = {
+  navigation: NativeStackNavigationProp<RootStackParamList, 'ComponentGallery'>;
+};
+
+export const ComponentGalleryScreen = ({ navigation }: Props) => {
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
@@ -85,10 +92,10 @@ export const ComponentGalleryScreen = ({ navigation }: any) => {
           <ProductGridSkeleton />
         </View>
 
-        <Text style={styles.sectionTitle}>ModelViewer3D (Working)</Text>
+        <Text style={styles.sectionTitle}>ModelViewer3D (Fallback)</Text>
         <View style={{ height: 350, width: '100%', marginBottom: 16, borderRadius: 18, overflow: 'hidden' }}>
           <ModelViewer3D 
-            modelAsset={require('../../../assets/models/face_serum_bottle.glb')} 
+            modelAsset={null}
             fallbackImage={mockProduct.images[0]}
           />
         </View>

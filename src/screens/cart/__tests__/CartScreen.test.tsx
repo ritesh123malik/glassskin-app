@@ -74,4 +74,57 @@ describe('CartScreen', () => {
 
     expect(mockNavigation.navigate).toHaveBeenCalledWith('Checkout');
   });
+
+  it('displays percent promo code with correct discount value', async () => {
+    // This test verifies the appliedPromo type shape is respected.
+    // If discountValue/discountType are renamed or removed from the type,
+    // this assignment will fail TypeScript compilation.
+    const percentPromo = {
+      code: 'SAVE20',
+      discountType: 'percent' as const,
+      discountValue: 20,
+      discountAmount: 9,
+    };
+
+    useAppStore.setState({ appliedPromo: percentPromo });
+
+    const { getByText } = await render(
+      <SafeAreaProvider
+        initialMetrics={{
+          frame: { x: 0, y: 0, width: 390, height: 844 },
+          insets: { top: 0, left: 0, right: 0, bottom: 0 },
+        }}
+      >
+        <CartScreen navigation={mockNavigation} />
+      </SafeAreaProvider>
+    );
+
+    expect(getByText(/Code: SAVE20/)).toBeTruthy();
+    expect(getByText(/\(20% Off\)/)).toBeTruthy();
+  });
+
+  it('displays fixed promo code with correct discount value', async () => {
+    const fixedPromo = {
+      code: 'WELCOME10',
+      discountType: 'fixed' as const,
+      discountValue: 10,
+      discountAmount: 10,
+    };
+
+    useAppStore.setState({ appliedPromo: fixedPromo });
+
+    const { getByText } = await render(
+      <SafeAreaProvider
+        initialMetrics={{
+          frame: { x: 0, y: 0, width: 390, height: 844 },
+          insets: { top: 0, left: 0, right: 0, bottom: 0 },
+        }}
+      >
+        <CartScreen navigation={mockNavigation} />
+      </SafeAreaProvider>
+    );
+
+    expect(getByText(/Code: WELCOME10/)).toBeTruthy();
+    expect(getByText(/\$10 Off/)).toBeTruthy();
+  });
 });

@@ -1,18 +1,17 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { View, Text, StyleSheet, SafeAreaView, TouchableOpacity, ScrollView } from 'react-native';
 import { ArrowLeft, Rotate3d, Sparkles, Check } from 'lucide-react-native';
 import { GlassCard } from '../../components/common/GlassCard';
 import { GlassButton } from '../../components/common/GlassButton';
+import { ModelViewer3D } from '../../components/common/ModelViewer3D';
 import { useAppStore } from '../../store/useAppStore';
 
-// On web, we use direct URLs for the GLB models (served via Expo's asset server)
-// No require() needed — avoids Metro resolution issues with .glb on web
 const MODELS_DATA = [
   {
     id: 'm1',
     name: 'Face Serum Bottle',
     description: 'Precision dropper bottle crafted for concentrated facial serums — delivering targeted, measured dosages of our Glass Skin Hydrating Serum.',
-    modelUrl: '/assets/models/face_serum_bottle.glb',
+    modelAsset: require('../../../assets/models/face_serum_bottle.glb'),
     productId: '00000000-0000-0000-0000-000000000001',
     features: ['Precision Dropper', 'Borosilicate Glass', 'Double Seal'],
   },
@@ -20,7 +19,7 @@ const MODELS_DATA = [
     id: 'm2',
     name: 'Rice Water Gel Jar',
     description: 'Airtight cosmetic jar preserving the delicate rice water gel formula — keeps ingredients potent and fresh from first use to last.',
-    modelUrl: '/assets/models/rice_water_gel.glb',
+    modelAsset: require('../../../assets/models/rice_water_gel.glb'),
     productId: '00000000-0000-0000-0000-000000000002',
     features: ['Airtight Seal', '100% Recyclable', 'Premium Glass'],
   },
@@ -28,27 +27,22 @@ const MODELS_DATA = [
     id: 'm3',
     name: 'Face Wash Tube',
     description: 'Eco-friendly soft-touch tube perfectly sized for our Soothing Centella Gel Cleanser — travel-ready with a clean, hygienic flip-top cap.',
-    modelUrl: '/assets/models/face_wash_tube.glb',
+    modelAsset: require('../../../assets/models/face_wash_tube.glb'),
     productId: '00000000-0000-0000-0000-000000000006',
     features: ['Flip-Top Cap', 'Travel Friendly', 'Soft-Touch Finish'],
   },
 ];
 
-export const Showroom3DScreen = ({ navigation }: any) => {
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { RootStackParamList } from '../../navigation/AppNavigator';
+
+type Props = {
+  navigation: NativeStackNavigationProp<RootStackParamList, 'Showroom3D'>;
+};
+
+export const Showroom3DScreen = ({ navigation }: Props) => {
   const [activeModelIndex, setActiveModelIndex] = useState(0);
   const { addToCart } = useAppStore();
-
-  // Load model-viewer web component script
-  useEffect(() => {
-    const scriptId = 'model-viewer-script';
-    if (!document.getElementById(scriptId)) {
-      const script = document.createElement('script');
-      script.id = scriptId;
-      script.type = 'module';
-      script.src = 'https://ajax.googleapis.com/ajax/libs/model-viewer/3.5.0/model-viewer.min.js';
-      document.head.appendChild(script);
-    }
-  }, []);
 
   const activeModel = MODELS_DATA[activeModelIndex];
 
@@ -77,15 +71,9 @@ export const Showroom3DScreen = ({ navigation }: any) => {
         {/* 3D Model Display Card */}
         <GlassCard intensity="high" style={styles.viewerCard}>
           <View style={styles.viewerContainer}>
-            {/* @ts-ignore — model-viewer is a custom HTML element */}
-            <model-viewer
-              src={activeModel.modelUrl}
-              camera-controls
-              auto-rotate
-              shadow-intensity="1"
-              environment-image="neutral"
-              style={{ width: '100%', height: '100%', background: 'transparent', outline: 'none' }}
-              ar
+            <ModelViewer3D
+              modelAsset={activeModel.modelAsset}
+              testID={`model-viewer-${activeModel.id}`}
             />
           </View>
         </GlassCard>

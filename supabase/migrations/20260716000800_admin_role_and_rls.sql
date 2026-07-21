@@ -28,15 +28,15 @@ BEGIN
       AND column_name = 'role'
   ) THEN
     ALTER TABLE public.users
-      ADD COLUMN role TEXT NOT NULL DEFAULT 'customer'
-      CHECK (role IN ('customer', 'admin'));
+      ADD COLUMN "role" TEXT NOT NULL DEFAULT 'customer'
+      CHECK ("role" IN ('customer', 'admin'));
   END IF;
 END
 $$;
 
 -- Index for fast admin lookups
-CREATE INDEX IF NOT EXISTS idx_users_role ON public.users (role)
-  WHERE role = 'admin';
+CREATE INDEX IF NOT EXISTS idx_users_role ON public.users ("role")
+  WHERE "role" = 'admin';
 
 -- ---------------------------------------------------------------------------
 -- 2. Helper function: is_admin()
@@ -54,7 +54,7 @@ AS $$
     SELECT 1
     FROM public.users
     WHERE id = auth.uid()
-      AND role = 'admin'
+      AND "role" = 'admin'
   );
 $$;
 
@@ -178,8 +178,22 @@ CREATE POLICY "Admins can read user preferences"
   USING (public.is_admin());
 
 -- ---------------------------------------------------------------------------
--- 11. Notifications — admin full access
 -- ---------------------------------------------------------------------------
+-- Create notifications table if it doesn't exist (referenced by admin RLS policies)
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS public.notifications (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID REFERENCES public.users(id) ON DELETE CASCADE NOT NULL,
+  title TEXT NOT NULL,
+  body TEXT NOT NULL,
+  data JSONB,
+  read BOOLEAN NOT NULL DEFAULT false,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+ALTER TABLE public.notifications ENABLE ROW LEVEL SECURITY;
+
+-- Admin full access
 DROP POLICY IF EXISTS "Admins can manage notifications" ON public.notifications;
 CREATE POLICY "Admins can manage notifications"
   ON public.notifications FOR ALL
@@ -187,28 +201,58 @@ CREATE POLICY "Admins can manage notifications"
   USING (public.is_admin())
   WITH CHECK (public.is_admin());
 
--- ---------------------------------------------------------------------------
--- 12. Seed a default admin account placeholder
---     (Replace email with your real admin email before running in production)
--- ---------------------------------------------------------------------------
--- NOTE: This only inserts the public.users row. The auth.users row must be
--- created via Supabase Dashboard → Authentication → Add User, then the
--- UUID from that row must match the one below.
--- Update the UUID after creating the auth user.
-INSERT INTO public.users (id, email, full_name, role, created_at, updated_at)
-VALUES (
-  '00000000-0000-0000-0000-000000000099',  -- Replace with real auth user UUID
-  'admin@glassskin.com',
-  'GLASSSKIN Admin',
-  'admin',
-  NOW(),
-  NOW()
-) ON CONFLICT (id) DO UPDATE
-  SET role = 'admin',
-      updated_at = NOW();
+-- Users can view their own notifications
+DROP POLICY IF EXISTS "Users can view own notifications" ON public.notifications;
+CREATE POLICY "Users can view own notifications"
+  ON public.notifications FOR SELECT
+  TO authenticated
+  USING (auth.uid() = user_id);
+
+-- Users can update their own notifications (mark as read)
+DROP POLICY IF EXISTS "Users can update own notifications" ON public.notifications;
+CREATE POLICY "Users can update own notifications"
+  ON public.notifications FOR UPDATE
+  TO authenticated
+  USING (auth.uid() = user_id)
+  WITH CHECK (auth.uid() = user_id);
+
+-- Service role can insert notifications (used by edge functions)
+DROP POLICY IF EXISTS "Service role can insert notifications" ON public.notifications;
+CREATE POLICY "Service role can insert notifications"
+  ON public.notifications FOR INSERT
+  TO authenticated
+  WITH CHECK (true);
+
+
+
 
 -- ---------------------------------------------------------------------------
 -- Verification query (uncomment to test)
 -- ---------------------------------------------------------------------------
 -- SELECT id, email, role FROM public.users WHERE role = 'admin';
 -- SELECT public.is_admin(); -- should return TRUE when called as admin user
+CREATE TABLE IF NOT EXISTS public.paypal_webhook_events (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  event_id TEXT UNIQUE NOT NULL,
+  event_type TEXT NOT NULL,
+  paypal_order_id TEXT,
+  order_id TEXT REFERENCES public.orders(id) ON DELETE SET NULL,
+  payload JSONB NOT NULL,
+  verified BOOLEAN NOT NULL DEFAULT false,
+  processed_at TIMESTAMP WITH TIME ZONE,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+ALTER TABLE public.paypal_webhook_events ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Admins can read PayPal webhook events" ON public.paypal_webhook_events;
+CREATE POLICY "Admins can read PayPal webhook events"
+  ON public.paypal_webhook_events FOR SELECT
+  TO authenticated
+  USING (public.is_admin());
+
+CREATE INDEX IF NOT EXISTS idx_paypal_webhook_events_order_id
+  ON public.paypal_webhook_events(order_id);
+
+CREATE INDEX IF NOT EXISTS idx_paypal_webhook_events_event_type
+  ON public.paypal_webhook_events(event_type);

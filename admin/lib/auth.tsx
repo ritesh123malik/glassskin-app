@@ -51,6 +51,7 @@ export function AdminAuthProvider({
       const {
         data: { session },
       } = await supabase.auth.getSession();
+      console.log('[auth] getSession result:', session ? `user=${session.user.email}` : 'no session')
 
       if (!session) {
         setUser(null);
@@ -64,8 +65,10 @@ export function AdminAuthProvider({
         .eq('id', session.user.id)
         .single();
 
+      console.log('[auth] users table query result:', { profile, error })
+
       if (error || profile?.role !== 'admin') {
-        // Not an admin — sign them out for safety
+        console.warn('[auth] not admin, signing out')
         await supabase.auth.signOut();
         setUser(null);
         return;
@@ -87,7 +90,7 @@ export function AdminAuthProvider({
     // Keep the UI in sync when the session changes (e.g. token refresh, tab refocus)
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange(() => {
+    } = supabase.auth.onAuthStateChange((event, session) => {
       resolveAdminUser();
     });
 
@@ -95,16 +98,45 @@ export function AdminAuthProvider({
   }, [resolveAdminUser]);
 
   const signIn = async (email: string, password: string) => {
-    const { error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
+    console.log('[auth] signIn attempt:', email)
+    
+    const response = await fetch('/api/auth/login', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ email, password }),
     });
-    if (error) throw error;
+
+    const result = await response.json();
+
+    if (!response.ok) {
+      console.error('[auth] signIn error:', result.error)
+      throw new Error(result.error || 'Login failed');
+    }
+
+    console.log('[auth] signIn success via API route')
+
+    // Sync the Supabase client session so the frontend can use it
+    if (result.session) {
+      await supabase.auth.setSession({
+        access_token: result.session.access_token,
+        refresh_token: result.session.refresh_token,
+      });
+    }
+
     await resolveAdminUser();
-    router.push('/');
+    console.log('[auth] resolveAdminUser done, navigating to /')
+    router.push('/')
   };
 
   const signOut = async () => {
+    try {
+      await fetch('/api/auth/logout', { method: 'POST' });
+    } catch (err) {
+      console.error('[auth] logout API error:', err);
+    }
+
     await supabase.auth.signOut();
     setUser(null);
     router.push('/login');

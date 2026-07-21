@@ -1,0 +1,9 @@
+export { HomeHeader } from './HomeHeader';
+export { SearchBar } from './SearchBar';
+export { HeroCarousel } from './HeroCarousel';
+export { ModelShowcase } from './ModelShowcase';
+export { MarqueeStrip } from './MarqueeStrip';
+export { PromoBanner } from './PromoBanner';
+export { CategoryGrid } from './CategoryGrid';
+export { FeaturedProducts } from './FeaturedProducts';
+export { NewsletterSignup } from './NewsletterSignup';

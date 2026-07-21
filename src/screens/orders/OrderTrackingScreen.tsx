@@ -16,7 +16,15 @@ const STATUS_STEPS = [
   { id: 'delivered', label: 'Delivered', desc: 'Handed over at your shipping location.', icon: Check },
 ];
 
-export const OrderTrackingScreen = ({ route, navigation }: any) => {
+import { NativeStackNavigationProp, RouteProp } from '@react-navigation/native-stack';
+import { RootStackParamList } from '../../navigation/AppNavigator';
+
+type Props = {
+  navigation: NativeStackNavigationProp<RootStackParamList, 'OrderTracking'>;
+  route: RouteProp<RootStackParamList, 'OrderTracking'>;
+};
+
+export const OrderTrackingScreen = ({ route, navigation }: Props) => {
   const { orderId } = route.params;
   const currentOrder = useAppStore(state => state.currentOrder);
   const fetchOrderById = useAppStore(state => state.fetchOrderById);
@@ -36,7 +44,9 @@ export const OrderTrackingScreen = ({ route, navigation }: any) => {
   }, [orderId, fetchOrderById]);
 
   // Simulate updating status when clicking refresh for testing
+  // DEV-ONLY: gated behind __DEV__ so it is stripped from production builds
   const simulateStatusUpdate = () => {
+    if (!__DEV__) return;
     const statuses: TrackingStatus[] = ['pending', 'processing', 'shipped', 'delivered'];
     const currentIndex = statuses.indexOf(activeStatus);
     if (currentIndex < statuses.length - 1) {
@@ -75,9 +85,11 @@ export const OrderTrackingScreen = ({ route, navigation }: any) => {
           <ArrowLeft size={20} color={tokens.colors.ink} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Order Tracking</Text>
-        <TouchableOpacity style={styles.headerBtn} onPress={simulateStatusUpdate}>
-          <Text style={styles.refreshText}>Advance</Text>
-        </TouchableOpacity>
+        {__DEV__ && (
+          <TouchableOpacity style={styles.headerBtn} onPress={simulateStatusUpdate}>
+            <Text style={styles.refreshText}>Advance</Text>
+          </TouchableOpacity>
+        )}
       </View>
 
       <ScrollView

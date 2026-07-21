@@ -25,7 +25,9 @@
       },
       "env": {
         "EXPO_PUBLIC_USE_MOCKS": "false",
-        "GRADLE_OPTS": "-Dorg.gradle.jvmargs=\"-Xmx4096m -XX:MaxMetaspaceSize=1024m\""
+        "GRADLE_OPTS": "-Dorg.gradle.jvmargs=\"-Xmx4096m -XX:MaxMetaspaceSize=1024m\"",
+        "EXPO_PUBLIC_SUPABASE_URL": "https://afevhbneeoqzmccwhkyx.supabase.co",
+        "EXPO_PUBLIC_SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFmZXZoYm5lZW9xem1jY3doa3l4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQxOTgxMzgsImV4cCI6MjA5OTc3NDEzOH0.lDtr7ZjeR0fSH4UyiWB1s8wShqLcyC64lch-L6lhk2E"
       }
     },
     "production": {
@@ -39,7 +41,9 @@
       },
       "env": {
         "EXPO_PUBLIC_USE_MOCKS": "false",
-        "GRADLE_OPTS": "-Dorg.gradle.jvmargs=\"-Xmx4096m -XX:MaxMetaspaceSize=1024m\""
+        "GRADLE_OPTS": "-Dorg.gradle.jvmargs=\"-Xmx4096m -XX:MaxMetaspaceSize=1024m\"",
+        "EXPO_PUBLIC_SUPABASE_URL": "https://afevhbneeoqzmccwhkyx.supabase.co",
+        "EXPO_PUBLIC_SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFmZXZoYm5lZW9xem1jY3doa3l4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQxOTgxMzgsImV4cCI6MjA5OTc3NDEzOH0.lDtr7ZjeR0fSH4UyiWB1s8wShqLcyC64lch-L6lhk2E"
       }
     }
   },

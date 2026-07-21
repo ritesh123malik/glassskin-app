@@ -48,7 +48,14 @@ const MODELS_DATA = [
   },
 ];
 
-export const Showroom3DScreen = ({ navigation }: any) => {
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { RootStackParamList } from '../../navigation/AppNavigator';
+
+type Props = {
+  navigation: NativeStackNavigationProp<RootStackParamList, 'Showroom3D'>;
+};
+
+export const Showroom3DScreen = ({ navigation }: Props) => {
   const [activeModelIndex, setActiveModelIndex] = useState(0);
   const { addToCart, products } = useAppStore();
 

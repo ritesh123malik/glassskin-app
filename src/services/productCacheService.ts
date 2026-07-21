@@ -21,7 +21,7 @@ function getDb(): SQLite.SQLiteDatabase | null {
   return dbInstance;
 }
 
-const CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
+const CACHE_TTL_MS = 1 * 60 * 60 * 1000; // 1 hour
 
 export const productCacheService = {
   /**
@@ -77,7 +77,7 @@ export const productCacheService = {
   },
 
   /**
-   * Checks if the cache has expired (older than 7 days) or is empty.
+   * Checks if the cache has expired (older than 1 hour) or is empty.
    */
   isCacheStale(): boolean {
     try {
@@ -93,6 +93,36 @@ export const productCacheService = {
     } catch (error) {
       console.error('Failed to check if local SQLite cache is stale:', error);
       return true;
+    }
+  },
+
+  /**
+   * Validates that cached products have the expected shape and are non-empty.
+   * Returns false if the cache is corrupt, empty, or structurally invalid.
+   */
+  isCacheValid(): boolean {
+    try {
+      const cached = this.getCachedProducts();
+      if (!cached || cached.length === 0) {
+        return false;
+      }
+      // Validate first product shape — if it's malformed, assume whole cache is bad
+      const sample = cached[0];
+      if (
+        typeof sample !== 'object' ||
+        typeof sample.id !== 'string' ||
+        typeof sample.name !== 'string' ||
+        typeof sample.price !== 'number' ||
+        !Array.isArray(sample.images) ||
+        !Array.isArray(sample.tags)
+      ) {
+        console.warn('[productCacheService] Cache validation failed: malformed product data');
+        return false;
+      }
+      return true;
+    } catch (error) {
+      console.error('Failed to validate cached products:', error);
+      return false;
     }
   },
 

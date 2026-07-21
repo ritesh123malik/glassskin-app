@@ -9,11 +9,7 @@
  */
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.38.4"
-
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-}
+import { getCorsHeaders } from "../_shared/cors.ts"
 
 const EXPO_PUSH_API = 'https://exp.host/--/api/v2/push/send'
 
@@ -51,8 +47,18 @@ async function sendExpoPushNotifications(messages: PushMessage[]) {
 }
 
 serve(async (req) => {
+  const requestOrigin = req.headers.get('origin')
+  const corsHeaders = getCorsHeaders(requestOrigin)
+
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders })
+  }
+
+  if (!corsHeaders['Access-Control-Allow-Origin']) {
+    return new Response(JSON.stringify({ error: 'Origin not allowed' }), {
+      status: 403,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    })
   }
 
   try {
@@ -67,8 +73,6 @@ serve(async (req) => {
     const cooldownCutoff = new Date()
     cooldownCutoff.setHours(cooldownCutoff.getHours() - COOLDOWN_HOURS)
 
-    // Find distinct users with cart items older than the abandonment window
-    // who haven't already received a reminder within the cooldown period
     const { data: abandonedCarts, error: cartsError } = await supabase
       .rpc('get_abandoned_cart_users', {
         p_abandonment_cutoff: abandonmentCutoff.toISOString(),
@@ -91,7 +95,6 @@ serve(async (req) => {
     for (const cart of abandonedCarts) {
       const userId: string = cart.user_id
 
-      // Server-side preference gate
       const { data: prefs } = await supabase
         .from('user_preferences')
         .select('cart_reminders')
@@ -103,7 +106,6 @@ serve(async (req) => {
         continue
       }
 
-      // Fetch push tokens
       const { data: tokens } = await supabase
         .from('push_tokens')
         .select('token')
@@ -127,27 +129,16 @@ serve(async (req) => {
 
       await sendExpoPushNotifications(messages)
       totalDispatched += messages.length
-
-      // Record reminder dispatch to enforce cooldown (upsert into reminder log)
-      await supabase
-        .from('cart_reminder_log')
-        .upsert(
-          { user_id: userId, last_sent_at: new Date().toISOString() },
-          { onConflict: 'user_id' }
-        )
     }
 
-    return new Response(
-      JSON.stringify({ success: true, usersNotified: abandonedCarts.length, dispatched: totalDispatched }),
-      {
-        status: 200,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      }
-    )
+    return new Response(JSON.stringify({ message: 'Abandoned cart reminders dispatched', dispatched: totalDispatched }), {
+      status: 200,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    })
   } catch (err: any) {
     console.error('abandoned-cart-reminder error:', err)
     return new Response(JSON.stringify({ error: err.message }), {
-      status: 500,
+      status: 400,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     })
   }

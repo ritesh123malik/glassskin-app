@@ -1,32 +1,37 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
-
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-};
+import { getCorsHeaders, requireAuthenticatedUser } from '../_shared/verifyJwt.ts';
 
 serve(async (req) => {
+  const requestOrigin = req.headers.get('origin')
+  const corsHeaders = getCorsHeaders(requestOrigin)
+
   if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders });
+    return new Response('ok', { headers: corsHeaders })
+  }
+
+  if (!corsHeaders['Access-Control-Allow-Origin']) {
+    return new Response(JSON.stringify({ error: 'Origin not allowed' }), {
+      status: 403,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    })
   }
 
   try {
+    const authResult = await requireAuthenticatedUser(req)
+    if ('error' in authResult) {
+      return new Response(JSON.stringify({ error: authResult.error }), {
+        status: authResult.status,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      })
+    }
+
+    const userId = authResult.userId
+
     const supabaseClient = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_ANON_KEY') ?? '',
-      { global: { headers: { Authorization: req.headers.get('Authorization')! } } }
+      Deno.env.get('SUPABASE_ANON_KEY') ?? ''
     );
-
-    // Get the user making the request
-    const { data: { user }, error: userError } = await supabaseClient.auth.getUser();
-    
-    if (userError || !user) {
-      return new Response(JSON.stringify({ error: 'Unauthorized' }), {
-        status: 401,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
-    }
 
     // We can use the regular client to fetch data since RLS allows owners to view their own data
     
@@ -37,19 +42,21 @@ serve(async (req) => {
       { data: wishlists },
       { data: reviews }
     ] = await Promise.all([
-      supabaseClient.from('users').select('*').eq('id', user.id).single(),
-      supabaseClient.from('orders').select('*, order_items(*)').eq('user_id', user.id),
-      supabaseClient.from('cart_items').select('*').eq('user_id', user.id),
-      supabaseClient.from('wishlists').select('*').eq('user_id', user.id),
-      supabaseClient.from('reviews').select('*').eq('user_id', user.id),
+      supabaseClient.from('users').select('*').eq('id', userId).single(),
+      supabaseClient.from('orders').select('*, order_items(*)').eq('user_id', userId),
+      supabaseClient.from('cart_items').select('*').eq('user_id', userId),
+      supabaseClient.from('wishlists').select('*').eq('user_id', userId),
+      supabaseClient.from('reviews').select('*').eq('user_id', userId),
     ]);
+
+    const authUser = (await supabaseClient.auth.getUser()).data.user
 
     const exportData = {
       account: {
-        id: user.id,
-        email: user.email,
-        created_at: user.created_at,
-        last_sign_in_at: user.last_sign_in_at,
+        id: userId,
+        email: authUser?.email,
+        created_at: authUser?.created_at,
+        last_sign_in_at: authUser?.last_sign_in_at,
       },
       profile: profile || {},
       orders: orders || [],

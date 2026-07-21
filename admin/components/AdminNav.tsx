@@ -8,6 +8,12 @@ import {
   Package,
   ShoppingBag,
   BarChart3,
+  Tags,
+  Users,
+  Bell,
+  Mail,
+  Smartphone,
+  FileText,
   Settings,
   LogOut,
 } from 'lucide-react';
@@ -15,7 +21,13 @@ import {
 const NAV_ITEMS = [
   { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { href: '/dashboard/products', label: 'Products', icon: Package },
+  { href: '/dashboard/promo-codes', label: 'Promo Codes', icon: Tags },
   { href: '/dashboard/orders', label: 'Orders', icon: ShoppingBag },
+  { href: '/dashboard/push-tokens', label: 'Push Tokens', icon: Smartphone },
+  { href: '/dashboard/user-preferences', label: 'Preferences', icon: Users },
+  { href: '/dashboard/notifications', label: 'Notifications', icon: Bell },
+  { href: '/dashboard/newsletter', label: 'Newsletter', icon: Mail },
+  { href: '/dashboard/audit-log', label: 'Audit Log', icon: FileText },
   { href: '/dashboard/analytics', label: 'Analytics', icon: BarChart3 },
   { href: '/dashboard/settings', label: 'Settings', icon: Settings },
 ];

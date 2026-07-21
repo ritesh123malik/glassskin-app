@@ -15,7 +15,16 @@ const SKIN_TYPES = ['dry', 'oily', 'sensitive', 'normal', 'combination'];
 const CERTIFICATIONS = ['organic', 'vegan', 'cruelty-free', 'toxin-free'];
 const CATEGORIES = ['Skincare', 'Body Care', 'Hair Care'];
 
-export const ProductListingScreen = ({ route, navigation }: any) => {
+import { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
+import { RouteProp } from '@react-navigation/native';
+import { TabParamList } from '../../navigation/AppNavigator';
+
+type Props = {
+  navigation: BottomTabNavigationProp<TabParamList, 'Shop'>;
+  route: RouteProp<TabParamList, 'Shop'>;
+};
+
+export const ProductListingScreen = ({ navigation, route }: Props) => {
   const products = useAppStore(state => state.products);
   const fetchProducts = useAppStore(state => state.fetchProducts);
   const productsLoading = useAppStore(state => state.productsLoading);
@@ -186,15 +195,10 @@ export const ProductListingScreen = ({ route, navigation }: any) => {
           ]}
           columnWrapperStyle={isGridView ? { justifyContent: 'space-between' } : undefined}
           showsVerticalScrollIndicator={false}
-          initialNumToRender={6}
-          maxToRenderPerBatch={10}
-          windowSize={5}
+          initialNumToRender={8}
+          maxToRenderPerBatch={12}
+          windowSize={10}
           keyExtractor={(item) => item.id}
-          getItemLayout={(data, index) => ({
-            length: isGridView ? 240 : 120,
-            offset: (isGridView ? 240 : 120) * index,
-            index,
-          })}
           refreshControl={
             <RefreshControl
               refreshing={refreshing}

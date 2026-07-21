@@ -14,6 +14,7 @@ ALTER TABLE public.cart_reminder_log ENABLE ROW LEVEL SECURITY;
 
 -- Service-role only (cron function uses service role)
 DROP POLICY IF EXISTS "Service role manages reminder log" ON public.cart_reminder_log;
+DROP POLICY IF EXISTS "Service role manages reminder log" ON public.cart_reminder_log;
 CREATE POLICY "Service role manages reminder log" ON public.cart_reminder_log
   USING (false)           -- no SELECT for regular users
   WITH CHECK (false);     -- no INSERT/UPDATE for regular users
@@ -115,7 +116,7 @@ END;
 $$;
 
 DROP TRIGGER IF EXISTS on_order_status_change ON public.orders;
-CREATE TRIGGER on_order_status_change
+DROP TRIGGER IF EXISTS on_order_status_change ON public.orders; CREATE TRIGGER on_order_status_change
   AFTER UPDATE OF status ON public.orders
   FOR EACH ROW
   EXECUTE FUNCTION public.notify_order_status_change();
